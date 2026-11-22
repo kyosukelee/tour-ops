@@ -418,3 +418,15 @@ export async function listRequests(db: Db, projectId: string) {
 }
 
 export type RequestRow = Awaited<ReturnType<typeof listRequests>>[number];
+
+// ---------- 毎朝の処理 ----------
+
+export async function lastDailyRun(db: Db) {
+  const [row] = await db
+    .select({ createdAt: s.auditLogs.createdAt, changes: s.auditLogs.changes })
+    .from(s.auditLogs)
+    .where(eq(s.auditLogs.action, "system.daily"))
+    .orderBy(desc(s.auditLogs.createdAt))
+    .limit(1);
+  return row ? { at: row.createdAt, ...(row.changes as { trigger?: string; mailsSent?: number; mailsFailed?: number }) } : null;
+}

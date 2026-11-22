@@ -184,7 +184,7 @@ function ArrangementForm({
         </Field>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="確認番号(仕入先の予約番号)" name="confirmationNo" errors={fieldErrors}>
+        <Field label="確定番号(仕入先の予約番号)" name="confirmationNo" errors={fieldErrors}>
           <Input defaultValue={defaults.confirmationNo ?? ""} maxLength={100} />
         </Field>
         <Field label="集合・受け渡し場所" name="meetingPlace" errors={fieldErrors}>

@@ -37,6 +37,7 @@ const PERMISSIONS = {
   "masters.write": ["admin", "staff"],
   "users.manage": ["admin"],
   "audit.view": ["admin"],
+  "system.run": ["admin"], // 毎朝の処理を手動で実行する
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

@@ -9,8 +9,11 @@ import { getDb } from "@/db";
 import { todayInTokyo } from "@/lib/dates";
 import { requireActor } from "@/lib/session";
 import { PROJECT_STATUSES, PROJECT_STATUS_LABEL, TERMINAL_STATUSES } from "@/lib/status";
-import { cn, formatDate, formatDateRange } from "@/lib/utils";
-import { getDashboard } from "@/server/queries";
+import { cn, formatDate, formatDateRange, formatDateTime } from "@/lib/utils";
+import { runDailyJobAction } from "@/app/actions/system";
+import { ActionButton } from "@/components/form/action-button";
+import { can } from "@/server/core";
+import { getDashboard, lastDailyRun } from "@/server/queries";
 
 export const metadata: Metadata = { title: "ダッシュボード | tour-ops" };
 
@@ -31,7 +34,12 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/">["searc
   // 既定は全員分(少人数のチームで互いの期限を見られるように)。「自分」で自分の担当だけにする
   const allTasks = scope !== "mine";
   const today = todayInTokyo();
-  const data = await getDashboard(getDb(), { today, userId: allTasks ? undefined : actor.id });
+  const db = getDb();
+  const isAdmin = can(actor, "system.run");
+  const [data, lastRun] = await Promise.all([
+    getDashboard(db, { today, userId: allTasks ? undefined : actor.id }),
+    isAdmin ? lastDailyRun(db) : Promise.resolve(null),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -110,6 +118,28 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/">["searc
           </CardContent>
         </Card>
       </div>
+
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>毎朝の通知メール</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <p className="text-muted-foreground">
+              毎朝6時ごろ、期限切れ・3日以内のタスクと、出発が近いのに確定していない手配を担当者に知らせます。
+              <span className="mt-1 block">
+                前回:{" "}
+                {lastRun
+                  ? `${formatDateTime(lastRun.at)}(${lastRun.trigger ?? "—"}・${lastRun.mailsSent ?? 0}通${lastRun.mailsFailed ? `、失敗${lastRun.mailsFailed}通` : ""})`
+                  : "まだ実行していません"}
+              </span>
+            </p>
+            <ActionButton action={runDailyJobAction} variant="outline" size="sm" confirm="担当者全員に通知メールを送ります。よろしいですか?">
+              今すぐ送る
+            </ActionButton>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

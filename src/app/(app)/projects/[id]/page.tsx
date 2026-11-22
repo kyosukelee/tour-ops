@@ -296,7 +296,7 @@ function ArrangementsTab({ project, suppliers }: { project: ProjectDetail; suppl
                   <span className="tabular-nums">
                     {formatYen(a.unitPrice)} × {a.quantity}
                   </span>
-                  {a.confirmationNo && <span>確認番号 {a.confirmationNo}</span>}
+                  {a.confirmationNo && <span>確定番号 {a.confirmationNo}</span>}
                   <DueDates replyDue={a.replyDue} cancelFeeFrom={a.cancelFeeFrom} settled={a.status === "confirmed" || cancelled} />
                 </div>
               </li>
@@ -337,7 +337,7 @@ function ArrangementsTab({ project, suppliers }: { project: ProjectDetail; suppl
                     <TableCell className="min-w-56">
                       <span className="block text-xs text-muted-foreground">{a.supplierName ?? "仕入先未定"}</span>
                       <span className={cn("text-sm", cancelled && "line-through")}>{a.description}</span>
-                      {a.confirmationNo && <span className="block text-xs text-muted-foreground">確認番号 {a.confirmationNo}</span>}
+                      {a.confirmationNo && <span className="block text-xs text-muted-foreground">確定番号 {a.confirmationNo}</span>}
                       {cancelled && a.cancelFee != null && (
                         <span className="block text-xs">取消料 {formatYen(a.cancelFee)}</span>
                       )}

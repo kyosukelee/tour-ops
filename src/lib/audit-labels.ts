@@ -40,6 +40,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   "user.update": "担当者を編集",
   "user.password_reset": "パスワードを再設定",
   "system.seed": "デモデータを投入",
+  "system.daily": "毎朝の処理(通知メール)",
 };
 
 // 変更内容に出てくる項目名
@@ -65,7 +66,7 @@ export const FIELD_LABEL: Record<string, string> = {
   unitPrice: "販売単価",
   replyDue: "回答期限",
   cancelFeeFrom: "取消料発生日",
-  confirmationNo: "確認番号",
+  confirmationNo: "確定番号",
   actualCost: "精算額",
   invoiceReceived: "請求受領",
   cancelFee: "取消料",
@@ -93,6 +94,11 @@ export const FIELD_LABEL: Record<string, string> = {
   mailTransport: "送信",
   replies: "回答",
   filename: "ファイル",
+  trigger: "実行",
+  reset: "デモデータの作り直し",
+  closedTasks: "完了にした自動タスク",
+  mailsSent: "送ったメール",
+  mailsFailed: "送れなかったメール",
 };
 
 // 一覧で表に出さない項目(ID など)
