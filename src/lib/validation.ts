@@ -1,6 +1,6 @@
 // 入力チェック(Zod)。画面のフォームとサーバー処理で同じ定義を使う
 import { z } from "zod";
-import { ARRANGEMENT_CATEGORIES as CATEGORIES, ARRANGEMENT_STATUSES, PROJECT_STATUSES } from "./status";
+import { ARRANGEMENT_CATEGORIES as CATEGORIES, ARRANGEMENT_STATUSES, PROJECT_STATUSES, REQUEST_KINDS, REQUEST_METHODS } from "./status";
 
 // フォームの空欄は null として扱う
 const optionalText = (max = 500) =>
@@ -103,6 +103,40 @@ export const taskDoneInput = z.object({ done: checkbox });
 
 export const commentInput = z.object({ body: requiredText("コメント", 2000) });
 export type CommentInput = z.infer<typeof commentInput>;
+
+// ---------- 手配依頼 ----------
+
+// チェックボックスの複数選択(1件なら文字列、複数なら配列で届く)
+const idList = (message: string) =>
+  z
+    .union([z.uuid(), z.array(z.uuid())], { error: message })
+    .transform((v) => (Array.isArray(v) ? v : [v]))
+    .pipe(z.array(z.uuid()).min(1, message));
+
+export const requestInput = z.object({
+  supplierId: z.uuid("仕入先を選んでください"),
+  kind: z.enum(REQUEST_KINDS, { error: "依頼の種類を選んでください" }),
+  method: z.enum(REQUEST_METHODS, { error: "送り方を選んでください" }),
+  arrangementIds: idList("依頼する手配を1件以上選んでください"),
+  note: optionalText(1000),
+});
+export type RequestInput = z.infer<typeof requestInput>;
+
+// 仕入先からの回答: 手配ごとに 仮押さえ / 確定 / 手配不可
+export const REPLY_RESULTS = ["tentative", "confirmed", "declined"] as const;
+export const replyInput = z.object({
+  items: z
+    .array(
+      z.object({
+        arrangementId: z.uuid(),
+        result: z.enum(REPLY_RESULTS, { error: "回答を選んでください" }),
+        confirmationNo: optionalText(100),
+        unitCost: optionalYen("原価"),
+      }),
+    )
+    .min(1, "回答を入力する手配がありません"),
+});
+export type ReplyInput = z.infer<typeof replyInput>;
 
 // ---------- マスタ ----------
 

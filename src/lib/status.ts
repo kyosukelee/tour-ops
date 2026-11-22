@@ -146,3 +146,51 @@ export function grossProfit(
     return sum + a.unitPrice * a.quantity - cost;
   }, 0);
 }
+
+// ---------- 手配依頼 ----------
+
+export const REQUEST_KINDS = ["inquiry", "booking", "change", "cancel"] as const;
+export type RequestKind = (typeof REQUEST_KINDS)[number];
+export const REQUEST_METHODS = ["fax", "email"] as const;
+export type RequestMethod = (typeof REQUEST_METHODS)[number];
+
+export const REQUEST_KIND_LABEL: Record<RequestKind, string> = {
+  inquiry: "照会(空き確認)",
+  booking: "手配",
+  change: "変更",
+  cancel: "取消",
+};
+
+// PDF の表題
+export const REQUEST_TITLE: Record<RequestKind, string> = {
+  inquiry: "手配照会書",
+  booking: "手配依頼書",
+  change: "手配変更依頼書",
+  cancel: "手配取消依頼書",
+};
+
+export const REQUEST_METHOD_LABEL: Record<RequestMethod, string> = { fax: "FAX", email: "メール" };
+
+// 案件のステータスごとに送れる依頼の種類
+// 受注前は照会だけ、受注後は手配・変更、終了した案件は取消だけ
+export function allowedRequestKinds(projectStatus: ProjectStatus): readonly RequestKind[] {
+  if (projectStatus === "completed") return [];
+  if (projectStatus === "lost" || projectStatus === "cancelled") return ["cancel"];
+  if (canConfirmArrangement(projectStatus)) return ["booking", "change", "inquiry", "cancel"];
+  return ["inquiry", "cancel"];
+}
+
+// 依頼を送ったあとの手配ステータス(変えないときは null)
+export function statusAfterRequest(kind: RequestKind, current: ArrangementStatus): ArrangementStatus | null {
+  if (current === "cancelled") return null;
+  switch (kind) {
+    case "inquiry":
+      return current === "pending" ? "requested" : null;
+    case "booking":
+      return current === "pending" || current === "tentative" ? "requested" : null;
+    case "change":
+      return current === "requested" ? null : "requested";
+    case "cancel":
+      return "cancelled";
+  }
+}

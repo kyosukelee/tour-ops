@@ -3,10 +3,13 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PencilIcon, PlusIcon } from "lucide-react";
+import { FileTextIcon, PencilIcon, PlusIcon, SendIcon } from "lucide-react";
 import { changeProjectStatusAction, createArrangementAction, updateArrangementAction } from "@/app/actions/projects";
+import { recordReplyAction, sendRequestAction } from "@/app/actions/requests";
 import { addCommentAction, createTaskAction, deleteTaskAction, setTaskDoneAction } from "@/app/actions/tasks";
 import { ActionButton } from "@/components/form/action-button";
+import { ReplyDialog } from "@/components/projects/reply-dialog";
+import { RequestDialog, type RequestSupplier } from "@/components/projects/request-dialog";
 import { CommentForm, TaskAddForm } from "@/components/projects/task-parts";
 import { Loading } from "@/components/app/page-header";
 import { ArrangementDialog, type SupplierOption } from "@/components/projects/arrangement-dialog";
@@ -20,8 +23,11 @@ import { getDb } from "@/db";
 import { todayInTokyo } from "@/lib/dates";
 import { requireActor } from "@/lib/session";
 import {
+  allowedRequestKinds,
   ARRANGEMENT_STATUS_LABEL,
   canConfirmArrangement,
+  REQUEST_KIND_LABEL,
+  REQUEST_METHOD_LABEL,
   CATEGORY_LABEL,
   nextProjectStatuses,
   PROJECT_STATUS_LABEL,
@@ -30,12 +36,13 @@ import {
   type ProjectStatus,
 } from "@/lib/status";
 import { cn, formatDate, formatDateRange, formatDateTime, formatYen } from "@/lib/utils";
-import { getProjectDetail, listSupplierOptions, listUserOptions, type ProjectDetail } from "@/server/queries";
+import { getProjectDetail, listRequests, listSupplierOptions, listUserOptions, type ProjectDetail, type RequestRow } from "@/server/queries";
 
 export const metadata: Metadata = { title: "案件詳細 | tour-ops" };
 
 const TABS = [
   { key: "arrangements", label: "手配明細" },
+  { key: "requests", label: "手配依頼" },
   { key: "tasks", label: "タスク" },
   { key: "comments", label: "コメント" },
   { key: "history", label: "履歴" },
@@ -61,7 +68,12 @@ async function ProjectView({
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const db = getDb();
-  const [project, suppliers, users] = await Promise.all([getProjectDetail(db, id), listSupplierOptions(db), listUserOptions(db)]);
+  const [project, suppliers, users, requests] = await Promise.all([
+    getProjectDetail(db, id),
+    listSupplierOptions(db),
+    listUserOptions(db),
+    listRequests(db, id),
+  ]);
   if (!project) notFound();
 
   const tab: TabKey = TABS.some((t) => t.key === sp.tab) ? (sp.tab as TabKey) : "arrangements";
@@ -163,12 +175,14 @@ async function ProjectView({
               {t.label}
               {t.key === "arrangements" && <span className="ml-1 text-xs">({project.arrangements.length})</span>}
               {t.key === "tasks" && openTasks > 0 && <span className="ml-1 text-xs">({openTasks})</span>}
+              {t.key === "requests" && requests.length > 0 && <span className="ml-1 text-xs">({requests.length})</span>}
               {t.key === "comments" && project.comments.length > 0 && <span className="ml-1 text-xs">({project.comments.length})</span>}
             </Link>
           ))}
         </nav>
         <div className="pt-4">
           {tab === "arrangements" && <ArrangementsTab project={project} suppliers={suppliers as SupplierOption[]} />}
+          {tab === "requests" && <RequestsTab project={project} suppliers={suppliers} requests={requests} />}
           {tab === "tasks" && <TasksTab project={project} users={users.filter((u) => u.active)} />}
           {tab === "comments" && <CommentsTab project={project} />}
           {tab === "history" && <HistoryTab project={project} />}
@@ -234,6 +248,15 @@ function ArrangementsTab({ project, suppliers }: { project: ProjectDetail; suppl
             .map(([st, n]) => `${ARRANGEMENT_STATUS_LABEL[st as ArrangementStatus]} ${n}`)
             .join(" ・ ") || "手配はまだありません"}
         </p>
+        <div className="flex flex-wrap gap-2">
+        {allowedRequestKinds(status).length > 0 && project.arrangements.length > 0 && (
+          <Button asChild size="sm" variant="outline">
+            <Link href={`/projects/${project.id}?tab=requests`} scroll={false}>
+              <SendIcon className="size-4" />
+              手配依頼へ
+            </Link>
+          </Button>
+        )}
         {canAdd && (
           <ArrangementDialog
             title="手配を追加"
@@ -249,6 +272,7 @@ function ArrangementsTab({ project, suppliers }: { project: ProjectDetail; suppl
             canConfirm={canConfirm}
           />
         )}
+        </div>
       </div>
 
       {/* スマホ: カード表示 */}
@@ -358,6 +382,117 @@ function DueDates({ replyDue, cancelFeeFrom, settled }: { replyDue: string | nul
         <span className={cn("block", cancelFeeFrom <= today && "text-amber-700")}>取消料 {formatDate(cancelFeeFrom)}〜</span>
       )}
     </>
+  );
+}
+
+type SupplierOpt = Awaited<ReturnType<typeof listSupplierOptions>>[number];
+
+function RequestsTab({ project, suppliers, requests }: { project: ProjectDetail; suppliers: SupplierOpt[]; requests: RequestRow[] }) {
+  const kinds = allowedRequestKinds(project.status);
+  const canConfirm = canConfirmArrangement(project.status);
+  // 仕入先ごとに、この案件の手配をまとめる
+  const groups: RequestSupplier[] = [];
+  for (const a of project.arrangements) {
+    if (!a.supplierId) continue;
+    let g = groups.find((x) => x.id === a.supplierId);
+    if (!g) {
+      const sup = suppliers.find((x) => x.id === a.supplierId);
+      g = { id: a.supplierId, name: sup?.name ?? a.supplierName ?? "", email: sup?.email ?? null, fax: sup?.fax ?? null, arrangements: [] };
+      groups.push(g);
+    }
+    g.arrangements.push({ id: a.id, description: a.description, serviceDate: a.serviceDate, status: a.status });
+  }
+  const unassigned = project.arrangements.filter((a) => !a.supplierId && a.status !== "cancelled").length;
+  // 依頼中のまま回答がない手配(仕入先ごと)
+  const waiting = project.arrangements.filter((a) => a.status === "requested");
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          {waiting.length > 0 ? `回答待ち ${waiting.length}件` : "回答待ちの手配はありません"}
+          {kinds.length === 0 && " ・ 完了した案件には依頼を送れません"}
+        </p>
+        {kinds.length > 0 && (
+          <RequestDialog
+            projectId={project.id}
+            action={sendRequestAction.bind(null, project.id)}
+            suppliers={groups}
+            kinds={kinds}
+            unassignedCount={unassigned}
+            trigger={
+              <Button size="sm">
+                <SendIcon className="size-4" />
+                手配依頼を作成
+              </Button>
+            }
+          />
+        )}
+      </div>
+
+      {requests.length === 0 ? (
+        <p className="rounded-lg border p-6 text-center text-sm text-muted-foreground">まだ手配依頼を送っていません。</p>
+      ) : (
+        <ul className="space-y-3">
+          {requests.map((r) => {
+            // 回答待ち(依頼中・仮押さえ・未手配)の手配があるときだけ、回答の入力を出す
+            const replyable =
+              r.kind !== "cancel" && project.status !== "completed" && r.items.some((i) => i.status !== "cancelled" && i.status !== "confirmed");
+            return (
+              <li key={r.id} className="rounded-lg border p-4 text-sm">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{r.supplierName}</span>
+                      <Badge variant="outline">{REQUEST_KIND_LABEL[r.kind]}</Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {REQUEST_METHOD_LABEL[r.method]} ・ {formatDateTime(r.sentAt)} ・ {r.senderName ?? "—"}
+                      </span>
+                    </p>
+                    <p className="font-mono text-xs text-muted-foreground">{r.requestNo}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    <Button asChild size="sm" variant="outline">
+                      <a href={`/api/requests/${r.id}/pdf`} target="_blank" rel="noopener" aria-label={`${r.requestNo} のPDFを開く`}>
+                        <FileTextIcon className="size-4" />
+                        PDF
+                      </a>
+                    </Button>
+                    {replyable && (
+                      <ReplyDialog
+                        action={recordReplyAction.bind(null, r.id)}
+                        supplierName={r.supplierName}
+                        items={r.items}
+                        canConfirm={canConfirm}
+                        trigger={
+                          <Button size="sm" aria-label={`${r.requestNo} の回答を入力`}>
+                            回答を入力
+                          </Button>
+                        }
+                      />
+                    )}
+                  </div>
+                </div>
+                <ul className="mt-2 space-y-1">
+                  {r.items.map((i) => (
+                    <li key={i.id} className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="w-16 tabular-nums text-muted-foreground">{formatDate(i.serviceDate)}</span>
+                      <span className="min-w-0 flex-1">{i.description}</span>
+                      {i.confirmationNo && <span className="text-muted-foreground">確定番号 {i.confirmationNo}</span>}
+                      <ArrangementStatusBadge status={i.status} />
+                    </li>
+                  ))}
+                </ul>
+                {r.note && <p className="mt-2 rounded bg-muted/50 px-2 py-1 text-xs whitespace-pre-wrap">{r.note}</p>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p className="text-xs text-muted-foreground">
+        手配ステータスは各手配の今の状態です。PDFは送ったときの依頼内容に、今の手配明細の内容を差し込んで作ります。
+      </p>
+    </div>
   );
 }
 

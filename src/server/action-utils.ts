@@ -13,13 +13,7 @@ export type ActionResult<T = unknown> =
 
 export const initialActionState: ActionResult = { ok: true };
 
-export function formToObject(formData: FormData): Record<string, FormDataEntryValue> {
-  const obj: Record<string, FormDataEntryValue> = {};
-  for (const [k, v] of formData.entries()) {
-    if (!k.startsWith("$ACTION")) obj[k] = v;
-  }
-  return obj;
-}
+export { formToObject } from "@/lib/form";
 
 // ログイン確認は try の外で行う(未ログインなら /login へリダイレクトさせるため)
 export async function runAction<S extends z.ZodType, T>(

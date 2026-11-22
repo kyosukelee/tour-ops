@@ -26,7 +26,14 @@ export async function listAgencyOptions(db: Db, includeId?: string | null) {
 
 export async function listSupplierOptions(db: Db) {
   return db
-    .select({ id: s.suppliers.id, name: s.suppliers.name, category: s.suppliers.category, active: s.suppliers.active })
+    .select({
+      id: s.suppliers.id,
+      name: s.suppliers.name,
+      category: s.suppliers.category,
+      active: s.suppliers.active,
+      email: s.suppliers.email,
+      fax: s.suppliers.fax,
+    })
     .from(s.suppliers)
     .orderBy(asc(s.suppliers.category), asc(s.suppliers.name));
 }
@@ -368,3 +375,46 @@ export async function listAuditLogs(db: Db, filter: AuditFilter = {}) {
     rows: rows.map((r) => ({ ...r.log, userName: r.userName, projectCode: r.projectCode, projectTitle: r.projectTitle })),
   };
 }
+
+// ---------- 手配依頼(案件ごと) ----------
+
+export async function listRequests(db: Db, projectId: string) {
+  const [project] = await db.select({ code: s.projects.code }).from(s.projects).where(eq(s.projects.id, projectId)).limit(1);
+  if (!project) return [];
+  const reqs = await db
+    .select({ r: s.supplierRequests, supplierName: s.suppliers.name, senderName: s.users.name })
+    .from(s.supplierRequests)
+    .innerJoin(s.suppliers, eq(s.supplierRequests.supplierId, s.suppliers.id))
+    .leftJoin(s.users, eq(s.supplierRequests.sentBy, s.users.id))
+    .where(eq(s.supplierRequests.projectId, projectId))
+    .orderBy(asc(s.supplierRequests.sentAt), asc(s.supplierRequests.id));
+  const ids = reqs.map((r) => r.r.id);
+  const items = ids.length
+    ? await db
+        .select({
+          requestId: s.requestItems.requestId,
+          id: s.arrangements.id,
+          description: s.arrangements.description,
+          serviceDate: s.arrangements.serviceDate,
+          status: s.arrangements.status,
+          confirmationNo: s.arrangements.confirmationNo,
+          unitCost: s.arrangements.unitCost,
+        })
+        .from(s.requestItems)
+        .innerJoin(s.arrangements, eq(s.requestItems.arrangementId, s.arrangements.id))
+        .where(inArray(s.requestItems.requestId, ids))
+        .orderBy(asc(s.arrangements.serviceDate), asc(s.arrangements.serviceTime))
+    : [];
+  // 依頼番号は送った順の連番。一覧は新しい順で返す
+  return reqs
+    .map((r, i) => ({
+      ...r.r,
+      requestNo: `${project.code}-R${i + 1}`,
+      supplierName: r.supplierName,
+      senderName: r.senderName,
+      items: items.filter((it) => it.requestId === r.r.id).map((it) => ({ ...it, status: it.status as ArrangementStatus })),
+    }))
+    .reverse();
+}
+
+export type RequestRow = Awaited<ReturnType<typeof listRequests>>[number];
