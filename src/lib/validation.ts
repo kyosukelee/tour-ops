@@ -1,8 +1,6 @@
 // 入力チェック(Zod)。画面のフォームとサーバー処理で同じ定義を使う
 import { z } from "zod";
-import { ARRANGEMENT_STATUSES, PROJECT_STATUSES } from "./status";
-
-const CATEGORIES = ["lodging", "bus", "taxi", "guide", "meal", "admission", "other"] as const;
+import { ARRANGEMENT_CATEGORIES as CATEGORIES, ARRANGEMENT_STATUSES, PROJECT_STATUSES } from "./status";
 
 // フォームの空欄は null として扱う
 const optionalText = (max = 500) =>
@@ -52,10 +50,16 @@ export const projectInput = z
     paxAdult: z.coerce.number().int().min(0, "人数は0以上にしてください").max(9999),
     paxChild: z.coerce.number().int().min(0, "人数は0以上にしてください").max(9999),
     language: optionalText(50),
-    ownerUserId: z.string().min(1).nullish().transform((v) => v ?? null),
+    // 担当者の空欄は「登録した人」(更新のときは今の担当者のまま)
+    ownerUserId: z.union([z.literal(""), z.string().min(1)]).nullish().transform((v) => (v ? v : null)),
     note: optionalText(2000),
   })
-  .refine((v) => v.endDate >= v.startDate, { path: ["endDate"], message: "帰着日は出発日以降にしてください" });
+  .refine((v) => v.endDate >= v.startDate, {
+    path: ["endDate"],
+    message: "帰着日は出発日以降にしてください",
+    // ほかの項目にエラーがあっても、日付が2つとも正しければ前後関係も同時に知らせる
+    when: (payload) => z.object({ startDate: isoDate, endDate: isoDate }).safeParse(payload.value).success,
+  });
 export type ProjectInput = z.infer<typeof projectInput>;
 
 export const projectStatusInput = z.object({

@@ -1,0 +1,239 @@
+// 画面表示用の読み取り処理。書き込みは projects.ts / arrangements.ts などのサービスで行う
+// DB を引数で受け取るので、テストから PGlite でそのまま呼べる
+import { and, asc, desc, eq, gte, ilike, inArray, lte, notInArray, or, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import * as s from "@/db/schema";
+import type { Db } from "@/db/types";
+import { addDays } from "@/lib/dates";
+import {
+  grossProfit,
+  PROJECT_STATUSES,
+  TERMINAL_STATUSES,
+  type ArrangementStatus,
+  type ProjectStatus,
+} from "@/lib/status";
+
+// ---------- 選択肢(フォーム用) ----------
+
+export async function listAgencyOptions(db: Db, includeId?: string | null) {
+  const rows = await db
+    .select({ id: s.agencies.id, name: s.agencies.name, active: s.agencies.active })
+    .from(s.agencies)
+    .orderBy(asc(s.agencies.name));
+  // 利用停止の依頼元は、編集中の案件で使っているときだけ残す
+  return rows.filter((r) => r.active || r.id === includeId);
+}
+
+export async function listSupplierOptions(db: Db) {
+  return db
+    .select({ id: s.suppliers.id, name: s.suppliers.name, category: s.suppliers.category, active: s.suppliers.active })
+    .from(s.suppliers)
+    .orderBy(asc(s.suppliers.category), asc(s.suppliers.name));
+}
+
+export async function listUserOptions(db: Db) {
+  return db
+    .select({ id: s.users.id, name: s.users.name, active: s.users.active })
+    .from(s.users)
+    .orderBy(asc(s.users.name));
+}
+
+// ---------- 案件一覧 ----------
+
+export type ProjectFilter = {
+  status?: string; // "open"(既定: 進行中)| "all" | 各ステータス
+  agencyId?: string;
+  ownerId?: string;
+  q?: string;
+};
+
+export async function listProjects(db: Db, filter: ProjectFilter = {}) {
+  const where: SQL[] = [];
+  const status = filter.status || "open";
+  if (status === "open") where.push(notInArray(s.projects.status, [...TERMINAL_STATUSES]));
+  else if ((PROJECT_STATUSES as readonly string[]).includes(status)) {
+    where.push(eq(s.projects.status, status as ProjectStatus));
+  }
+  if (filter.agencyId) where.push(eq(s.projects.agencyId, filter.agencyId));
+  if (filter.ownerId) where.push(eq(s.projects.ownerUserId, filter.ownerId));
+  const q = filter.q?.trim();
+  if (q) {
+    const pattern = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    where.push(or(ilike(s.projects.title, pattern), ilike(s.projects.code, pattern))!);
+  }
+
+  const projects = await db
+    .select({
+      id: s.projects.id,
+      code: s.projects.code,
+      title: s.projects.title,
+      status: s.projects.status,
+      startDate: s.projects.startDate,
+      endDate: s.projects.endDate,
+      paxAdult: s.projects.paxAdult,
+      paxChild: s.projects.paxChild,
+      agencyName: s.agencies.name,
+      ownerName: s.users.name,
+    })
+    .from(s.projects)
+    .innerJoin(s.agencies, eq(s.projects.agencyId, s.agencies.id))
+    .leftJoin(s.users, eq(s.projects.ownerUserId, s.users.id))
+    .where(where.length ? and(...where) : undefined)
+    .orderBy(asc(s.projects.startDate), asc(s.projects.code));
+
+  const ids = projects.map((p) => p.id);
+  const arrs = ids.length
+    ? await db.select().from(s.arrangements).where(inArray(s.arrangements.projectId, ids))
+    : [];
+
+  return projects.map((p) => {
+    const mine = arrs.filter((a) => a.projectId === p.id);
+    const active = mine.filter((a) => a.status !== "cancelled");
+    return {
+      ...p,
+      status: p.status as ProjectStatus,
+      activeCount: active.length,
+      confirmedCount: active.filter((a) => a.status === "confirmed").length,
+      profit: grossProfit(mine as ArrangementForCalc[]),
+    };
+  });
+}
+
+type ArrangementForCalc = Parameters<typeof grossProfit>[0][number];
+
+// ---------- 案件詳細 ----------
+
+export async function getProjectDetail(db: Db, id: string) {
+  const [project] = await db
+    .select({
+      project: s.projects,
+      agencyName: s.agencies.name,
+      agencyFax: s.agencies.fax,
+      agencyEmail: s.agencies.email,
+      agencyContact: s.agencies.contactName,
+      ownerName: s.users.name,
+    })
+    .from(s.projects)
+    .innerJoin(s.agencies, eq(s.projects.agencyId, s.agencies.id))
+    .leftJoin(s.users, eq(s.projects.ownerUserId, s.users.id))
+    .where(eq(s.projects.id, id))
+    .limit(1);
+  if (!project) return null;
+
+  const changer = alias(s.users, "changer");
+  const [arrangements, tasks, history] = await Promise.all([
+    db
+      .select({ a: s.arrangements, supplierName: s.suppliers.name })
+      .from(s.arrangements)
+      .leftJoin(s.suppliers, eq(s.arrangements.supplierId, s.suppliers.id))
+      .where(eq(s.arrangements.projectId, id))
+      .orderBy(asc(s.arrangements.serviceDate), asc(s.arrangements.serviceTime), asc(s.arrangements.createdAt)),
+    db
+      .select({ t: s.tasks, assigneeName: s.users.name })
+      .from(s.tasks)
+      .leftJoin(s.users, eq(s.tasks.assigneeUserId, s.users.id))
+      .where(eq(s.tasks.projectId, id))
+      .orderBy(asc(s.tasks.done), asc(s.tasks.dueDate)),
+    db
+      .select({
+        h: s.statusHistory,
+        changedByName: changer.name,
+        arrangementDescription: s.arrangements.description,
+      })
+      .from(s.statusHistory)
+      .leftJoin(changer, eq(s.statusHistory.changedBy, changer.id))
+      .leftJoin(s.arrangements, eq(s.statusHistory.arrangementId, s.arrangements.id))
+      .where(eq(s.statusHistory.projectId, id))
+      .orderBy(desc(s.statusHistory.changedAt)),
+  ]);
+
+  const arrs = arrangements.map((r) => ({ ...r.a, status: r.a.status as ArrangementStatus, supplierName: r.supplierName }));
+  const active = arrs.filter((a) => a.status !== "cancelled");
+  const sales = active.reduce((sum, a) => sum + a.unitPrice * a.quantity, 0);
+  const profit = grossProfit(arrs);
+
+  return {
+    ...project.project,
+    status: project.project.status as ProjectStatus,
+    agencyName: project.agencyName,
+    agencyContact: project.agencyContact,
+    agencyFax: project.agencyFax,
+    agencyEmail: project.agencyEmail,
+    ownerName: project.ownerName,
+    arrangements: arrs,
+    tasks: tasks.map((r) => ({ ...r.t, assigneeName: r.assigneeName })),
+    history: history.map((r) => ({ ...r.h, changedByName: r.changedByName, arrangementDescription: r.arrangementDescription })),
+    totals: {
+      sales,
+      cost: sales - profit,
+      profit,
+      activeCount: active.length,
+      confirmedCount: active.filter((a) => a.status === "confirmed").length,
+      cancelledCount: arrs.length - active.length,
+    },
+  };
+}
+
+export type ProjectDetail = NonNullable<Awaited<ReturnType<typeof getProjectDetail>>>;
+
+// ---------- ダッシュボード ----------
+
+export async function getDashboard(db: Db, opts: { today: string; userId?: string }) {
+  const { today, userId } = opts;
+  const soon = addDays(today, 7);
+
+  const taskWhere: SQL[] = [eq(s.tasks.done, false), lte(s.tasks.dueDate, soon)];
+  if (userId) taskWhere.push(eq(s.tasks.assigneeUserId, userId));
+
+  const [statusRows, tasks, departures] = await Promise.all([
+    db.select({ status: s.projects.status }).from(s.projects),
+    db
+      .select({
+        id: s.tasks.id,
+        title: s.tasks.title,
+        dueDate: s.tasks.dueDate,
+        source: s.tasks.source,
+        projectId: s.projects.id,
+        projectCode: s.projects.code,
+        projectTitle: s.projects.title,
+        assigneeName: s.users.name,
+      })
+      .from(s.tasks)
+      .innerJoin(s.projects, eq(s.tasks.projectId, s.projects.id))
+      .leftJoin(s.users, eq(s.tasks.assigneeUserId, s.users.id))
+      .where(and(...taskWhere))
+      .orderBy(asc(s.tasks.dueDate))
+      .limit(30),
+    db
+      .select({
+        id: s.projects.id,
+        code: s.projects.code,
+        title: s.projects.title,
+        status: s.projects.status,
+        startDate: s.projects.startDate,
+        endDate: s.projects.endDate,
+        agencyName: s.agencies.name,
+      })
+      .from(s.projects)
+      .innerJoin(s.agencies, eq(s.projects.agencyId, s.agencies.id))
+      .where(
+        and(
+          gte(s.projects.startDate, today),
+          lte(s.projects.startDate, addDays(today, 14)),
+          notInArray(s.projects.status, [...TERMINAL_STATUSES]),
+        ),
+      )
+      .orderBy(asc(s.projects.startDate)),
+  ]);
+
+  const statusCounts = Object.fromEntries(PROJECT_STATUSES.map((st) => [st, 0])) as Record<ProjectStatus, number>;
+  for (const r of statusRows) statusCounts[r.status as ProjectStatus]++;
+
+  return {
+    statusCounts,
+    openCount: statusRows.filter((r) => !TERMINAL_STATUSES.includes(r.status as ProjectStatus)).length,
+    overdueTasks: tasks.filter((t) => t.dueDate < today),
+    upcomingTasks: tasks.filter((t) => t.dueDate >= today),
+    departures: departures.map((d) => ({ ...d, status: d.status as ProjectStatus })),
+  };
+}

@@ -45,6 +45,34 @@ export const ARRANGEMENT_STATUS_LABEL: Record<ArrangementStatus, string> = {
   cancelled: "取消",
 };
 
+export const ARRANGEMENT_CATEGORIES = ["lodging", "bus", "taxi", "guide", "meal", "admission", "other"] as const;
+export type ArrangementCategory = (typeof ARRANGEMENT_CATEGORIES)[number];
+
+export const CATEGORY_LABEL: Record<ArrangementCategory, string> = {
+  lodging: "宿泊",
+  bus: "貸切バス",
+  taxi: "観光タクシー",
+  guide: "ガイド",
+  meal: "食事",
+  admission: "施設入場",
+  other: "その他",
+};
+
+// ステータスを進めるボタンの文言(遷移先ごと)
+export const PROJECT_ACTION_LABEL: Partial<Record<ProjectStatus, string>> = {
+  quoting: "見積を始める",
+  quoted: "見積を提出した",
+  arranging: "受注して手配を始める",
+  operating: "催行を始める",
+  settling: "精算に進む",
+  completed: "完了にする",
+  lost: "失注にする",
+  cancelled: "キャンセルにする",
+};
+
+// 取り消しのきかない遷移(押す前に確認する)
+export const DESTRUCTIVE_STATUSES: readonly ProjectStatus[] = ["lost", "cancelled"];
+
 // 人が操作して進められる遷移。手配中⇔手配完了は手配明細から自動で決まるので含めない
 const MANUAL_TRANSITIONS: Record<ProjectStatus, readonly ProjectStatus[]> = {
   inquiry: ["quoting", "lost"],

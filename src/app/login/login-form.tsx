@@ -1,17 +1,16 @@
 "use client";
 
-import { useActionState } from "react";
 import { login } from "@/app/actions/auth";
+import { useFormAction } from "@/components/form/use-form-action";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function LoginForm() {
-  const [state, action, pending] = useActionState(login, { ok: true });
-  const fieldErrors = state.ok ? undefined : state.fieldErrors;
+  const { state, onSubmit, pending, fieldErrors } = useFormAction(login);
 
   return (
-    <form action={action} className="space-y-4">
+    <form onSubmit={onSubmit} className="space-y-4">
       <div className="space-y-2">
         <Label htmlFor="email">メールアドレス</Label>
         <Input id="email" name="email" type="email" autoComplete="username" required aria-invalid={!!fieldErrors?.email} />

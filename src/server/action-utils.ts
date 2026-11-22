@@ -7,7 +7,7 @@ import { getRequestInfo, requireActor } from "@/lib/session";
 import { fieldErrorsOf } from "@/lib/validation";
 import { AppError, type Ctx } from "./core";
 
-export type ActionResult<T = undefined> =
+export type ActionResult<T = unknown> =
   | { ok: true; data?: T; message?: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
 

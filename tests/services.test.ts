@@ -68,6 +68,21 @@ describe("案件", () => {
     });
     expect(r.success).toBe(false);
   });
+
+  it("依頼元が未選択でも、日付の前後関係のエラーを同時に返す", () => {
+    const r = projectInput.safeParse({ title: "x", agencyId: "", startDate: "2027-01-10", endDate: "2027-01-09", paxAdult: 1, paxChild: 0 });
+    expect(r.success).toBe(false);
+    const paths = r.error!.issues.map((i) => i.path.join("."));
+    expect(paths).toEqual(expect.arrayContaining(["agencyId", "endDate"]));
+  });
+
+  it("フォームの空欄(担当者・言語)は null として受け付ける", () => {
+    const r = projectInput.parse({
+      title: "x", agencyId: "00000000-0000-4000-8000-000000000000", startDate: "2027-01-10", endDate: "2027-01-10",
+      paxAdult: "3", paxChild: "0", ownerUserId: "", language: "", note: "",
+    });
+    expect(r).toMatchObject({ ownerUserId: null, language: null, note: null, paxAdult: 3 });
+  });
 });
 
 describe("手配明細", () => {
