@@ -2,7 +2,7 @@
 // 1. デモ公開中ならデータを今日の日付で作り直す
 // 2. 日付が過ぎた自動タスク(取消料発生日)を完了にする
 // 3. 担当者ごとに「期限切れ・今日・3日以内のタスク」「出発が近いのに未確定の手配」をメールで知らせる
-import { and, asc, eq, gte, inArray, lt, lte, notInArray } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, lte, notInArray, sql } from "drizzle-orm";
 import * as s from "@/db/schema";
 import { resetAll, seedDemoData } from "@/db/seed";
 import type { Db } from "@/db/types";
@@ -136,6 +136,26 @@ async function alreadyRanToday(db: Db, today: string) {
   return !!row;
 }
 
+// 今日の日付でデモデータを作り直し済みか(デモデータの投入は「基準日」を操作ログに残している)
+export async function seededOn(db: Db, today: string) {
+  const [row] = await db
+    .select({ id: s.auditLogs.id })
+    .from(s.auditLogs)
+    .where(and(eq(s.auditLogs.action, "system.seed"), sql`${s.auditLogs.changes}->>'today' = ${today}`))
+    .limit(1);
+  return !!row;
+}
+
+// デモデータの作り直しを1つずつ行うためのロックの番号(Cron とログイン時の作り直しが重なっても二重に消さない)
+const DEMO_RESET_LOCK = 724_001;
+
+export type DailyTrigger = "cron" | "manual" | "fallback";
+const TRIGGER_LABEL: Record<DailyTrigger, string> = {
+  cron: "自動(毎朝)",
+  manual: "手動",
+  fallback: "自動(最初のアクセス時。毎朝の処理が動かなかったため)",
+};
+
 export type DailyOptions = {
   today: string;
   mailer: Mailer;
@@ -143,6 +163,7 @@ export type DailyOptions = {
   demoReset?: { password: string; storage?: FileStorage | null } | null; // デモ公開中だけ指定する
   force?: boolean; // 今日すでに実行していても行う(管理者の手動実行)
   triggeredBy?: { userId: string } | null; // 手動実行した人(Cron のときは null)
+  trigger?: DailyTrigger;
 };
 
 export type DailyResult =
@@ -156,10 +177,18 @@ export async function runDailyJob(db: Db, opts: DailyOptions): Promise<DailyResu
 
   let reset = false;
   if (opts.demoReset) {
-    // 添付ファイルも消す(消さないと保管場所にファイルだけがたまり続ける)
-    await opts.demoReset.storage?.deletePrefix(ATTACHMENT_PREFIX);
-    await resetAll(db);
-    await seedDemoData(db, { today: opts.today, password: opts.demoReset.password });
+    const demo = opts.demoReset;
+    // 作り直しはロックを取って1つずつ行う。先に終わった方が今日の分を作っていたら、後の方は何もしない
+    const done = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(${DEMO_RESET_LOCK})`);
+      if (!opts.force && (await seededOn(tx, opts.today))) return false;
+      // 添付ファイルも消す(消さないと保管場所にファイルだけがたまり続ける)
+      await demo.storage?.deletePrefix(ATTACHMENT_PREFIX);
+      await resetAll(tx);
+      await seedDemoData(tx, { today: opts.today, password: demo.password });
+      return true;
+    });
+    if (!done) return { skipped: true, reason: "今日のデモデータは作成済みです" };
     reset = true;
   }
 
@@ -182,7 +211,7 @@ export async function runDailyJob(db: Db, opts: DailyOptions): Promise<DailyResu
     action: "system.daily",
     targetType: "system",
     extra: {
-      trigger: opts.triggeredBy ? "手動" : "自動(毎朝)",
+      trigger: TRIGGER_LABEL[opts.trigger ?? (opts.triggeredBy ? "manual" : "cron")],
       reset,
       closedTasks,
       mailsSent: mails.filter((m) => m.ok).length,
@@ -190,4 +219,13 @@ export async function runDailyJob(db: Db, opts: DailyOptions): Promise<DailyResu
     },
   });
   return { skipped: false, reset, closedTasks, mails };
+}
+
+// デモ公開中の予備: 毎朝の処理(Cron)が何らかの理由で動かなかった日も、その日最初のアクセスで作り直す
+// (何か月後に見られても、案件の日付が「今日」を基準にした状態で見えるように)
+export async function ensureDemoFresh(db: Db, opts: Omit<DailyOptions, "force" | "triggeredBy" | "trigger">) {
+  if (!opts.demoReset) return false;
+  if (await seededOn(db, opts.today)) return false;
+  const result = await runDailyJob(db, { ...opts, trigger: "fallback" });
+  return !result.skipped && result.reset;
 }

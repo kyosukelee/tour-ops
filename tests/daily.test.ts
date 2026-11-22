@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import * as s from "@/db/schema";
 import { addDays } from "@/lib/dates";
 import type { Mailer, MailMessage } from "@/server/mailer";
-import { buildDigests, digestMail, runDailyJob } from "@/server/daily";
+import { buildDigests, digestMail, ensureDemoFresh, runDailyJob, seededOn } from "@/server/daily";
 import { createTestDb, TODAY } from "./helpers";
 
 let t: Awaited<ReturnType<typeof createTestDb>>;
@@ -89,5 +89,37 @@ describe("runDailyJob", () => {
     expect(await t.db.select().from(s.comments).where(eq(s.comments.body, "消えるはず"))).toHaveLength(0);
     const [seed] = await t.db.select().from(s.auditLogs).where(eq(s.auditLogs.action, "system.seed"));
     expect(seed.changes).toMatchObject({ today: tomorrow });
+  });
+});
+
+describe("公開デモのデータを古くしない", () => {
+  const mailer = { send: async (m: { to: string }) => ({ id: null, deliveredTo: m.to, redirected: false, transport: "log" as const }) };
+
+  it("今日の日付で作ってあれば何もしない。古ければ、その場で今日の日付で作り直す", async () => {
+    // テストのデータは TODAY を基準に作ってある
+    expect(await seededOn(t.db, TODAY)).toBe(true);
+    expect(await ensureDemoFresh(t.db, { today: TODAY, mailer, appUrl: "", demoReset: { password: "test-password" } })).toBe(false);
+
+    // 何日も毎朝の処理が動かなかったとして、60日後に最初のアクセスがあった
+    const later = addDays(TODAY, 60);
+    expect(await ensureDemoFresh(t.db, { today: later, mailer, appUrl: "", demoReset: { password: "test-password" } })).toBe(true);
+    expect(await seededOn(t.db, later)).toBe(true);
+    const [p] = await t.db.select().from(s.projects).limit(1);
+    expect(p.code.startsWith(`T-${later.slice(0, 4)}-`)).toBe(true);
+    const [log] = await t.db.select().from(s.auditLogs).where(eq(s.auditLogs.action, "system.daily"));
+    expect((log.changes as { trigger: string }).trigger).toContain("最初のアクセス時");
+  });
+
+  it("DEMO_RESET でない(作り直しの指定がない)ときは何もしない", async () => {
+    expect(await ensureDemoFresh(t.db, { today: addDays(TODAY, 1), mailer, appUrl: "" })).toBe(false);
+  });
+
+  it("毎朝の処理と最初のアクセスが重なっても、作り直しは1回だけ", async () => {
+    const next = addDays(TODAY, 1);
+    const opts = { today: next, mailer, appUrl: "", demoReset: { password: "test-password" } };
+    const results = await Promise.all([runDailyJob(t.db, opts), ensureDemoFresh(t.db, opts)]);
+    const resets = await t.db.select().from(s.auditLogs).where(eq(s.auditLogs.action, "system.seed"));
+    expect(resets).toHaveLength(1);
+    expect(results.filter((r) => (typeof r === "boolean" ? r : !r.skipped)).length).toBe(1);
   });
 });
