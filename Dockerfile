@@ -11,6 +11,8 @@ RUN npm ci
 # ---- ビルド ----
 FROM deps AS builder
 COPY . .
+# public フォルダは中身が空だと Git に入らないので、無くても後の COPY が失敗しないように作っておく
+RUN mkdir -p public
 ENV NEXT_TELEMETRY_DISABLED=1
 # ブラウザ側の Sentry はビルド時に埋め込まれるので、使うときはビルド引数で渡す
 ARG NEXT_PUBLIC_SENTRY_DSN=""
