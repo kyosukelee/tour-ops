@@ -76,7 +76,7 @@ export function KanbanBoard({ cards }: { cards: KanbanCard[] }) {
                 drop(col);
               }}
               className={cn(
-                "flex w-60 shrink-0 flex-col rounded-lg border bg-muted/30 transition-colors",
+                "flex min-w-44 flex-1 shrink-0 flex-col rounded-lg border bg-muted/30 transition-colors",
                 dragging && canDrop && "border-blue-400 bg-blue-50/60",
                 dragging && !canDrop && dragging.status !== col && "opacity-50",
                 over === col && "ring-2 ring-blue-400",

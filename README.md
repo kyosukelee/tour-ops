@@ -4,7 +4,43 @@
 宿・バス・観光タクシー・ガイド・食事などの手配明細と、その回答期限・取消料発生日を取りこぼさず追えることを目指しています。
 ポートフォリオ用のデモで、会社名・データはすべて架空です。人名は実在の人と紛れないよう「デモ 太郎」のような仮名にしています。
 
-> 開発状況: **ステップ7(画面テスト・エラー監視・Docker)まで完了**。次は Vercel への公開です。
+## 公開デモ
+
+**https://tour-ops-lovat.vercel.app**
+
+| アカウント | メールアドレス | パスワード |
+| --- | --- | --- |
+| 管理者 | admin@tour-ops.example | tour-ops-demo |
+| 手配担当 | staff1@tour-ops.example | tour-ops-demo |
+
+- 自由に操作してかまいません。データは毎朝6時ごろ(日本時間)に作り直されます
+- メールは実在の宛先には送らず、作者のアドレスに差し替えています
+
+## スクリーンショット
+
+| ダッシュボード | 案件のカンバン |
+| --- | --- |
+| ![ダッシュボード](docs/images/tour-dashboard.jpg) | ![カンバン](docs/images/tour-kanban.jpg) |
+| **案件詳細と手配明細** | **手配依頼の作成** |
+| ![案件詳細](docs/images/tour-project.jpg) | ![手配依頼の作成](docs/images/tour-request.jpg) |
+| **手配依頼書・行程表のPDF** | **操作ログ** |
+| ![PDF](docs/images/tour-pdf.jpg) | ![操作ログ](docs/images/tour-audit.jpg) |
+
+## 全体の構成
+
+```mermaid
+flowchart LR
+  user["担当者のブラウザ<br>(PC・スマホ)"] --> app["Next.js<br>(Vercel)"]
+  app --> db[("PostgreSQL<br>(Neon)")]
+  app --> r2[("添付書類<br>(Cloudflare R2)")]
+  app --> mail["メール送信<br>(Resend)"]
+  app -. エラー .-> sentry["Sentry"]
+  cron["Vercel Cron<br>(毎朝)"] --> app
+  mail --> supplier["仕入先<br>(宿・バス・ガイドなど)"]
+  fax["FAX の依頼書・回答"] -. 写真・PDFで添付 .-> app
+```
+
+> 開発状況: **ステップ8(公開)まで完了**。設計書の8段階をすべて終えました。
 
 ## 技術構成
 

@@ -176,6 +176,8 @@ function formatValue(key: string, v: unknown, names?: Names): string {
   if (key === "category" && typeof v === "string") return CATEGORY_LABEL[v as keyof typeof CATEGORY_LABEL] ?? v;
   if (key === "role") return v === "admin" ? "管理者" : "手配担当";
   if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}T/.test(v)) return formatDateTime(v);
+  // 一覧(依頼した手配、回答など)は読点でつなぐ
+  if (Array.isArray(v)) return v.map((x) => (typeof x === "object" ? JSON.stringify(x) : String(x))).join("、");
   const s = typeof v === "object" ? JSON.stringify(v) : String(v);
   return s.length > 80 ? `${s.slice(0, 80)}…` : s;
 }

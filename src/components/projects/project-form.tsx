@@ -44,7 +44,7 @@ export function ProjectForm({
     <form onSubmit={onSubmit} className="max-w-3xl space-y-5" noValidate>
       <FormError state={state} />
       <Field label="ツアー名" name="title" errors={fieldErrors} required>
-        <Input defaultValue={defaults.title} placeholder="例: 宮島・岩国 秋の日帰り研修" maxLength={200} />
+        <Input defaultValue={defaults.title} placeholder="例: 秋の日帰り研修 バスツアー" maxLength={200} />
       </Field>
       <Field label="依頼元" name="agencyId" errors={fieldErrors} required>
         <NativeSelect defaultValue={defaults.agencyId ?? ""}>

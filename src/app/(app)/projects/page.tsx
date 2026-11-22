@@ -85,7 +85,7 @@ async function ProjectList({ searchParams }: { searchParams: PageProps<"/project
         {view === "kanban" && <input type="hidden" name="view" value="kanban" />}
         <label className="col-span-2 space-y-1 text-xs sm:w-56">
           <span className="text-muted-foreground">キーワード(ツアー名・案件番号)</span>
-          <Input name="q" defaultValue={filter.q} placeholder="例: 宮島" />
+          <Input name="q" defaultValue={filter.q} placeholder="例: 修学旅行" />
         </label>
         <label className={cn("space-y-1 text-xs sm:w-44", view === "kanban" && "hidden")}>
           <span className="text-muted-foreground">ステータス</span>
