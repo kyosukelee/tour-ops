@@ -8,6 +8,7 @@ import { resetAll, seedDemoData } from "@/db/seed";
 import type { Db } from "@/db/types";
 import { addDays, tokyoDateTime } from "@/lib/dates";
 import { TERMINAL_STATUSES } from "@/lib/status";
+import { reportError } from "@/lib/report-error";
 import { formatDate } from "@/lib/utils";
 import { recordAudit } from "./audit";
 import { ATTACHMENT_PREFIX } from "./attachments";
@@ -171,7 +172,7 @@ export async function runDailyJob(db: Db, opts: DailyOptions): Promise<DailyResu
       await opts.mailer.send(digestMail(d, opts.today, opts.appUrl));
       mails.push({ to: d.email, ok: true });
     } catch (e) {
-      console.error(JSON.stringify({ level: "error", msg: "digest mail failed", to: d.email, error: String(e) }));
+      reportError("digest mail failed", e, { to: d.email });
       mails.push({ to: d.email, ok: false });
     }
   }

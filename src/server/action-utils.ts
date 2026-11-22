@@ -1,5 +1,6 @@
 // Server Action の共通処理: ログイン確認 → 入力チェック → 業務処理 → 結果を画面向けに返す
 import "server-only";
+import { reportError } from "@/lib/report-error";
 import type { z } from "zod";
 import { getDb } from "@/db";
 import type { Db } from "@/db/types";
@@ -31,7 +32,7 @@ export async function runAction<S extends z.ZodType, T>(
     return { ok: true, data, message: "保存しました" };
   } catch (e) {
     if (e instanceof AppError) return { ok: false, error: e.message, fieldErrors: e.fieldErrors };
-    console.error(JSON.stringify({ level: "error", msg: "action failed", error: String(e) }));
+    reportError("action failed", e, { userId: actor.id });
     return { ok: false, error: "保存できませんでした。時間をおいてもう一度お試しください" };
   }
 }

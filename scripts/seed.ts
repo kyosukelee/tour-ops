@@ -1,6 +1,8 @@
 // デモデータを入れ直す: npm run db:seed
 // すべてのテーブルを空にしてから、今日を基準にした架空データを入れる
+// --if-empty を付けると、担当者が1人もいないとき(初回)だけ入れる(Docker の起動時に使う)
 import { config } from "dotenv";
+import { count } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "../src/db/schema";
@@ -20,6 +22,13 @@ async function main() {
   const today = todayInTokyo();
 
   try {
+    if (process.argv.includes("--if-empty")) {
+      const [{ n }] = await db.select({ n: count() }).from(schema.users);
+      if (n > 0) {
+        console.log("データが入っているので、デモデータは入れません(--if-empty)");
+        return;
+      }
+    }
     await resetAll(db);
     const result = await seedDemoData(db, { today, password });
     console.log(`デモデータを入れました(基準日: ${today})`);

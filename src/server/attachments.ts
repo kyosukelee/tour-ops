@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import * as s from "@/db/schema";
 import type { Db } from "@/db/types";
+import { reportError } from "@/lib/report-error";
 import { ATTACHMENT_KIND_LABEL } from "@/lib/status";
 import type { AttachmentInput } from "@/lib/validation";
 import { recordAudit } from "./audit";
@@ -104,7 +105,5 @@ export async function deleteAttachment(db: Db, ctx: Ctx, id: string, storage: Fi
     return before;
   });
   // 記録を消したあとにファイルを消す(失敗してもログに残すだけ)
-  await storage.delete(row.filePath).catch((e) =>
-    console.error(JSON.stringify({ level: "error", msg: "attachment file delete failed", key: row.filePath, error: String(e) })),
-  );
+  await storage.delete(row.filePath).catch((e) => reportError("attachment file delete failed", e, { key: row.filePath }));
 }

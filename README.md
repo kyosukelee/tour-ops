@@ -4,7 +4,7 @@
 宿・バス・観光タクシー・ガイド・食事などの手配明細と、その回答期限・取消料発生日を取りこぼさず追えることを目指しています。
 ポートフォリオ用のデモで、会社名・データはすべて架空です。人名は実在の人と紛れないよう「デモ 太郎」のような仮名にしています。
 
-> 開発状況: **ステップ6(カンバン・ダッシュボード・案件票と行程表のPDF・添付書類)まで完了**。テストの拡充・エラー監視・Docker と、公開を順に進めます。
+> 開発状況: **ステップ7(画面テスト・エラー監視・Docker)まで完了**。次は Vercel への公開です。
 
 ## 技術構成
 
@@ -139,6 +139,49 @@ $secret = (Select-String -Path .env.local -Pattern '^CRON_SECRET=(.+)$').Matches
 Invoke-RestMethod -Uri http://localhost:3000/api/cron/daily -Headers @{ Authorization = "Bearer $secret" }
 ```
 
+## テスト・エラー監視・Docker
+
+### テストは2段構え
+
+| 種類 | 中身 | 動かし方 |
+| --- | --- | --- |
+| 単体テスト(Vitest) | 業務処理・入力チェック・PDF・メール・保管場所など。DB は PGlite(メモリ上の Postgres)なので接続不要 | `npm.cmd test` |
+| 画面テスト(Playwright) | 本番ビルドを起動し、本物のブラウザでログイン・案件登録・カンバン・手配依頼・回答・添付・管理画面・スマホ表示を操作する(`e2e/`) | GitHub Actions で自動。手元では下記 |
+
+GitHub Actions では、push のたびに「Lint・型・単体テスト・ビルド」「画面テスト(Postgres をサービスとして起動)」「Docker イメージを作って起動・ログインできるか」の3つが走ります。
+
+画面テストを手元で動かすには、中身を消してよいテスト専用の Postgres が必要です。本番の Neon を消さないよう、接続先が手元(localhost)でなければ止まるようにしてあります。Docker Desktop があれば、使い捨ての Postgres を立てて動かせます(任意。GitHub Actions では自動で動きます)。
+
+```powershell
+docker run --rm -d --name tour-ops-e2e-db -p 5433:5432 -e POSTGRES_USER=tour_ops -e POSTGRES_PASSWORD=tour_ops -e POSTGRES_DB=tour_ops_e2e postgres:17-alpine
+npx playwright install chromium
+$env:E2E_DATABASE_URL = "postgresql://tour_ops:tour_ops@localhost:5433/tour_ops_e2e"
+npm.cmd run build
+npm.cmd run test:e2e
+docker stop tour-ops-e2e-db
+```
+
+### エラー監視(Sentry)とログ
+
+- `SENTRY_DSN`(サーバー)と `NEXT_PUBLIC_SENTRY_DSN`(ブラウザ)を入れると、想定外のエラーを Sentry に送る。空欄なら何も送らない
+- 送るのはエラーの内容と場所だけ。ログインのクッキー・リクエストの本文・案件の中身・利用者の情報は送らない(`src/lib/sentry-options.ts`)。無料枠に収めるため性能計測もしない
+- Sentry の画面で「新しいエラーが出たらメールで知らせる」設定にしておく(既定で有効)
+- アプリの動作ログは1行1件の JSON(`src/lib/logger.ts`)。Vercel のログ画面や `docker logs` でそのまま検索できる
+
+### Docker で動かす
+
+Vercel 以外(客先の AWS・Azure、社内サーバーなど)へ移すときの確認用です。Postgres・マイグレーション・デモデータ込みで起動します。
+
+```powershell
+docker compose up --build
+```
+
+http://localhost:3000 を開くと、ログイン画面にデモ用アカウントが出ます。止めるときは `docker compose down`(データも消すなら `docker compose down -v`)。
+
+- `Dockerfile` はマルチステージで、実行用イメージにはビルド道具を入れない(standalone 出力 + 静的ファイル、一般ユーザーで実行、ヘルスチェック付き)
+- 起動前に `migrate` がテーブルを作り、空のときだけデモデータを入れる
+- メール・R2・Sentry は未設定のまま動く(メールはログに出し、添付はボリュームに保存)
+
 ## 動かし方(Windows / PowerShell)
 
 前提: Node.js 22 以上、Neon のアカウント(無料プラン)
@@ -179,7 +222,9 @@ npm.cmd run dev
 | `npm.cmd run dev` | 開発サーバー |
 | `npm.cmd run lint` | Lint |
 | `npm.cmd run typecheck` | 型チェック |
-| `npm.cmd test` | テスト(PGlite でマイグレーション・デモデータ・業務処理を検証。DB接続は不要) |
+| `npm.cmd test` | 単体テスト(PGlite でマイグレーション・デモデータ・業務処理を検証。DB接続は不要) |
+| `npm.cmd run test:e2e` | 画面テスト(先に `npm.cmd run build`。`E2E_DATABASE_URL` が必要) |
+| `npm.cmd start` | 本番ビルドを起動する(standalone 出力に静的ファイルをコピーしてから起動) |
 | `npm.cmd run db:generate` | スキーマ変更後にマイグレーションSQLを作る |
 | `npm.cmd run db:migrate` | マイグレーションを Neon に反映する |
 | `npm.cmd run db:seed` | デモデータを入れ直す |

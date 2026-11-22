@@ -43,3 +43,8 @@ next-env.d.ts
 
 # 添付ファイルの手元の保存先(R2 を使わないとき)
 .data/
+
+# Playwright の結果
+/test-results/
+/playwright-report/
+/blob-report/

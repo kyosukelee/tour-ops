@@ -1,0 +1,54 @@
+# 手元のコンテナで、DB(Postgres)込みで動かす: docker compose up --build
+# 起動したら http://localhost:3000(デモ用アカウントはログイン画面に出る)
+# 止める: docker compose down(データも消すなら docker compose down -v)
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: tour_ops
+      POSTGRES_PASSWORD: tour_ops
+      POSTGRES_DB: tour_ops
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tour_ops"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # テーブルを作り(マイグレーション)、空ならデモデータを入れて終わる
+  migrate:
+    build:
+      context: .
+      target: tools
+    environment:
+      DATABASE_URL: postgresql://tour_ops:tour_ops@db:5432/tour_ops
+      SEED_DEMO_PASSWORD: tour-ops-demo
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      target: runner
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://tour_ops:tour_ops@db:5432/tour_ops
+      # 手元で試すための値。外に公開するときは必ず変える(.env に BETTER_AUTH_SECRET=... を書くと、そちらが使われる)
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-local-docker-only-secret-change-me-0000}
+      BETTER_AUTH_URL: http://localhost:3000
+      DEMO_MODE: "true"
+      SEED_DEMO_PASSWORD: tour-ops-demo
+      # メール・R2・Sentry は未設定(メールはログに出し、添付はボリュームに保存する)
+    volumes:
+      - uploads:/app/.data/uploads
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  db-data:
+  uploads:

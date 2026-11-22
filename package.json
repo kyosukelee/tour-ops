@@ -5,18 +5,20 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/start-standalone.mjs",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx scripts/seed.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@expo-google-fonts/noto-sans-jp": "^0.4.4",
     "@react-pdf/renderer": "^4.9.0",
+    "@sentry/nextjs": "^11.16.0",
     "aws4fetch": "^1.0.20",
     "better-auth": "^1.7.27",
     "class-variance-authority": "^0.7.1",
@@ -35,6 +37,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.17",
+    "@playwright/test": "^1.65.1",
     "@tailwindcss/turbopack": "4.3.3",
     "@types/node": "^22.20.5",
     "@types/pg": "^8.23.1",

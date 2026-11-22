@@ -1,6 +1,7 @@
 // Vercel Cron から毎朝呼ばれる(vercel.json)。CRON_SECRET を知っている呼び出しだけ受け付ける
 import { getDb } from "@/db";
 import { todayInTokyo } from "@/lib/dates";
+import { logger } from "@/lib/logger";
 import { runDailyJob } from "@/server/daily";
 import { createMailer } from "@/server/mailer";
 import { createStorage } from "@/server/storage";
@@ -22,6 +23,6 @@ export async function GET(req: Request) {
         ? { password: process.env.SEED_DEMO_PASSWORD ?? "tour-ops-demo", storage: createStorage() }
         : null,
   });
-  console.info(JSON.stringify({ level: "info", msg: "daily job", result }));
+  logger.info("daily job", { result });
   return Response.json(result);
 }

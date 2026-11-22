@@ -1,6 +1,7 @@
 // メール送信。Resend の API キーがあれば Resend で送り、なければ送らずにログへ出す(開発用)
 // デモ公開中は DEMO_MAIL_TO を設定し、宛先をすべてその1か所に差し替える(実在の宛先へは送らない)
 import { Resend } from "resend";
+import { logger } from "@/lib/logger";
 
 export type MailAttachment = { filename: string; content: Buffer };
 export type MailMessage = { to: string; subject: string; text: string; attachments?: MailAttachment[] };
@@ -31,15 +32,11 @@ export function createMailer(env: Record<string, string | undefined> = process.e
     async send(original) {
       const message = applyDemoRedirect(original, demoTo);
       if (!apiKey) {
-        console.info(
-          JSON.stringify({
-            level: "info",
-            msg: "mail (not sent: RESEND_API_KEY is not set)",
-            to: message.to,
-            subject: message.subject,
-            attachments: message.attachments?.map((a) => `${a.filename} (${a.content.length} bytes)`),
-          }),
-        );
+        logger.info("mail (not sent: RESEND_API_KEY is not set)", {
+          to: message.to,
+          subject: message.subject,
+          attachments: message.attachments?.map((a) => `${a.filename} (${a.content.length} bytes)`),
+        });
         return { id: null, deliveredTo: message.to, redirected: message.redirected, transport: "log" };
       }
       const resend = new Resend(apiKey);

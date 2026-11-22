@@ -1,10 +1,9 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = { title: "ログイン | tour-ops" };
-
-// デモ公開のときだけ、デモ用アカウントを画面に出す
-const demoMode = process.env.DEMO_MODE === "true";
 
 export default function LoginPage() {
   return (
@@ -13,16 +12,26 @@ export default function LoginPage() {
         <p className="text-sm text-muted-foreground">tour-ops</p>
         <h1 className="mb-6 text-2xl font-semibold">観光手配案件管理</h1>
         <LoginForm />
-        {demoMode && (
-          <div className="mt-6 rounded-md border p-4 text-xs text-muted-foreground">
-            <p className="mb-2 font-medium text-foreground">デモ用アカウント</p>
-            <p>管理者: admin@tour-ops.example</p>
-            <p>手配担当: staff1@tour-ops.example</p>
-            <p className="mt-2">パスワード: {process.env.SEED_DEMO_PASSWORD ?? "tour-ops-demo"}</p>
-            <p className="mt-2">データは毎朝初期化されます。会社名・人名はすべて架空です(人名は「デモ ◯◯」)。</p>
-          </div>
-        )}
+        <Suspense>
+          <DemoAccounts />
+        </Suspense>
       </div>
     </main>
+  );
+}
+
+// デモ公開のときだけ、デモ用アカウントを画面に出す
+// 環境変数はビルド時ではなく起動時に読む(Docker など、ビルド後に設定を変える環境でも効くように)
+async function DemoAccounts() {
+  await connection();
+  if (process.env.DEMO_MODE !== "true") return null;
+  return (
+    <div className="mt-6 rounded-md border p-4 text-xs text-muted-foreground">
+      <p className="mb-2 font-medium text-foreground">デモ用アカウント</p>
+      <p>管理者: admin@tour-ops.example</p>
+      <p>手配担当: staff1@tour-ops.example</p>
+      <p className="mt-2">パスワード: {process.env.SEED_DEMO_PASSWORD ?? "tour-ops-demo"}</p>
+      <p className="mt-2">データは毎朝初期化されます。会社名・人名はすべて架空です(人名は「デモ ◯◯」)。</p>
+    </div>
   );
 }
