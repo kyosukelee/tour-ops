@@ -17,9 +17,9 @@ export default function LoginPage() {
           <div className="mt-6 rounded-md border p-4 text-xs text-muted-foreground">
             <p className="mb-2 font-medium text-foreground">デモ用アカウント</p>
             <p>管理者: admin@tour-ops.example</p>
-            <p>手配担当: takahashi@tour-ops.example</p>
+            <p>手配担当: staff1@tour-ops.example</p>
             <p className="mt-2">パスワード: {process.env.SEED_DEMO_PASSWORD ?? "tour-ops-demo"}</p>
-            <p className="mt-2">データは毎朝初期化されます。会社名・人名はすべて架空です。</p>
+            <p className="mt-2">データは毎朝初期化されます。会社名・人名はすべて架空です(人名は「デモ ◯◯」)。</p>
           </div>
         )}
       </div>

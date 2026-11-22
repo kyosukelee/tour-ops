@@ -1,5 +1,5 @@
 // デモ用の架空データ。日付はすべて「今日」からの相対日で作り、いつ開いても
-// 「今週出発」「期限超過」などが表示されるようにする。会社名・人名はすべて架空。
+// 「今週出発」「期限超過」などが表示されるようにする。会社名はすべて架空。人名は「デモ 太郎」のような、ひと目で仮名とわかる名前にする。
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Db } from "./types";
@@ -15,16 +15,16 @@ type Category = (typeof s.arrangementCategory.enumValues)[number];
 // ---------- マスタ ----------
 
 const USERS = [
-  { key: "admin", name: "佐藤 美咲", email: "admin@tour-ops.example", role: "admin" },
-  { key: "takahashi", name: "高橋 健太", email: "takahashi@tour-ops.example", role: "staff" },
-  { key: "nakamura", name: "中村 さくら", email: "nakamura@tour-ops.example", role: "staff" },
+  { key: "admin", name: "デモ 花子", email: "admin@tour-ops.example", role: "admin" },
+  { key: "staff1", name: "デモ 太郎", email: "staff1@tour-ops.example", role: "staff" },
+  { key: "staff2", name: "デモ 次郎", email: "staff2@tour-ops.example", role: "staff" },
 ] as const;
 type UserKey = (typeof USERS)[number]["key"];
 
 const AGENCIES = {
   aozora: {
     name: "青空トラベル株式会社",
-    contactName: "田村 浩二",
+    contactName: "デモ 一郎",
     email: "group@aozora-travel.example",
     phone: "000-1111-0001",
     fax: "000-1111-0002",
@@ -32,7 +32,7 @@ const AGENCIES = {
   },
   mirai: {
     name: "ミライツーリスト株式会社",
-    contactName: "小林 由美",
+    contactName: "デモ 桜子",
     email: "school@mirai-tourist.example",
     phone: "000-2222-0001",
     fax: "000-2222-0002",
@@ -40,7 +40,7 @@ const AGENCIES = {
   },
   gtj: {
     name: "Global Trail Japan",
-    contactName: "Emily Clark",
+    contactName: "Demo Contact",
     email: "ops@globaltrail.example",
     phone: "000-3333-0001",
     fax: null,
@@ -107,7 +107,7 @@ type ProjectSpec = {
 const PROJECTS: ProjectSpec[] = [
   {
     title: "社員旅行 1泊2日",
-    agency: "aozora", status: "inquiry", start: 45, nights: 1, adult: 32, child: 0, lang: "日本語", owner: "takahashi",
+    agency: "aozora", status: "inquiry", start: 45, nights: 1, adult: 32, child: 0, lang: "日本語", owner: "staff1",
     note: "予算は1人3万円前後。宿は大浴場ありが希望",
     arrs: [
       { cat: "lodging", sup: "shiokaze", day: 0, desc: "1泊2食付き 和室", qty: 32, cost: 12000, price: 14000, status: "pending" },
@@ -116,7 +116,7 @@ const PROJECTS: ProjectSpec[] = [
   },
   {
     title: "高校2年 修学旅行(平和学習コース)",
-    agency: "mirai", status: "quoting", start: 30, nights: 2, adult: 128, child: 0, lang: "日本語", owner: "nakamura",
+    agency: "mirai", status: "quoting", start: 30, nights: 2, adult: 128, child: 0, lang: "日本語", owner: "staff2",
     arrs: [
       { cat: "lodging", sup: "ark", day: 0, desc: "2泊 朝食付き 4名1室", qty: 256, cost: 8000, price: 9200, status: "requested", reply: 2, cancelFrom: -14 },
       { cat: "bus", sup: "minato", day: 0, time: "09:30", desc: "大型バス4台 3日間", qty: 4, cost: 270000, price: 310000, status: "requested", reply: 1, cancelFrom: -14 },
@@ -126,7 +126,7 @@ const PROJECTS: ProjectSpec[] = [
   },
   {
     title: "海外団体 3日間 歴史と食のツアー",
-    agency: "gtj", status: "quoted", start: 21, nights: 2, adult: 18, child: 0, lang: "英語", owner: "takahashi",
+    agency: "gtj", status: "quoted", start: 21, nights: 2, adult: 18, child: 0, lang: "英語", owner: "staff1",
     arrs: [
       { cat: "lodging", sup: "ark", day: 0, desc: "2泊 朝食付き ツイン", qty: 36, cost: 11000, price: 13500, status: "tentative", reply: 5, cancelFrom: -7 },
       { cat: "bus", sup: "minato", day: 0, time: "10:00", desc: "中型バス 3日間", qty: 1, cost: 210000, price: 245000, status: "tentative", reply: 5, cancelFrom: -10 },
@@ -136,7 +136,7 @@ const PROJECTS: ProjectSpec[] = [
   },
   {
     title: "企業研修 日帰りバスツアー",
-    agency: "aozora", status: "lost", start: 14, nights: 0, adult: 40, child: 0, lang: "日本語", owner: "nakamura",
+    agency: "aozora", status: "lost", start: 14, nights: 0, adult: 40, child: 0, lang: "日本語", owner: "staff2",
     note: "他社の見積に決まったため失注",
     arrs: [
       { cat: "bus", sup: "aoba", day: 0, time: "08:30", desc: "大型バス 1日", qty: 1, cost: 95000, price: 110000, status: "cancelled" },
@@ -145,7 +145,7 @@ const PROJECTS: ProjectSpec[] = [
   },
   {
     title: "韓国団体 2泊3日 温泉と街歩き",
-    agency: "gtj", status: "arranging", start: 10, nights: 2, adult: 24, child: 0, lang: "韓国語", owner: "nakamura",
+    agency: "gtj", status: "arranging", start: 10, nights: 2, adult: 24, child: 0, lang: "韓国語", owner: "staff2",
     arrs: [
       { cat: "lodging", sup: "tsubaki", day: 0, desc: "2泊2食付き 和室", qty: 48, cost: 13000, price: 15500, status: "confirmed", cancelFrom: -10, conf: "TB-2231" },
       { cat: "bus", sup: "aoba", day: 0, time: "11:00", desc: "中型バス 3日間", qty: 1, cost: 200000, price: 235000, status: "confirmed", cancelFrom: -14, conf: "AB-5520", meet: "空港 到着ロビー" },
@@ -157,7 +157,7 @@ const PROJECTS: ProjectSpec[] = [
   },
   {
     title: "中学校 校外学習",
-    agency: "mirai", status: "arranging", start: 5, nights: 0, adult: 96, child: 0, lang: "日本語", owner: "takahashi",
+    agency: "mirai", status: "arranging", start: 5, nights: 0, adult: 96, child: 0, lang: "日本語", owner: "staff1",
     arrs: [
       { cat: "bus", sup: "minato", day: 0, time: "08:15", desc: "大型バス3台 1日", qty: 3, cost: 90000, price: 105000, status: "confirmed", cancelFrom: -10, conf: "MT-0917", meet: "学校 正門前" },
       { cat: "admission", sup: "midori", day: 0, time: "10:00", desc: "団体入館 解説付き", qty: 96, cost: 500, price: 700, status: "tentative", reply: 0 },
@@ -167,7 +167,7 @@ const PROJECTS: ProjectSpec[] = [
   },
   {
     title: "シニア旅行会 1泊2日",
-    agency: "aozora", status: "arranged", start: 3, nights: 1, adult: 26, child: 0, lang: "日本語", owner: "takahashi",
+    agency: "aozora", status: "arranged", start: 3, nights: 1, adult: 26, child: 0, lang: "日本語", owner: "staff1",
     arrs: [
       { cat: "lodging", sup: "shiokaze", day: 0, desc: "1泊2食付き 和室", qty: 26, cost: 13500, price: 15800, status: "confirmed", cancelFrom: -14, conf: "SK-7781" },
       { cat: "bus", sup: "aoba", day: 0, time: "08:30", desc: "大型バス 2日間", qty: 1, cost: 180000, price: 210000, status: "confirmed", cancelFrom: -14, conf: "AB-5602", meet: "駅前 ロータリー" },
@@ -178,7 +178,7 @@ const PROJECTS: ProjectSpec[] = [
   },
   {
     title: "海外VIP 観光タクシーで巡る2日間",
-    agency: "gtj", status: "arranged", start: 20, nights: 1, adult: 4, child: 0, lang: "英語", owner: "nakamura",
+    agency: "gtj", status: "arranged", start: 20, nights: 1, adult: 4, child: 0, lang: "英語", owner: "staff2",
     arrs: [
       { cat: "lodging", sup: "ark", day: 0, desc: "1泊 朝食付き スイート", qty: 2, cost: 45000, price: 55000, status: "confirmed", cancelFrom: -7, conf: "AK-1204" },
       { cat: "taxi", sup: "sakura", day: 0, time: "10:00", desc: "観光タクシー 1台 8時間", qty: 1, cost: 56000, price: 65000, status: "confirmed", cancelFrom: -1, conf: "ST-2045", meet: "シティホテル アーク ロビー" },
@@ -189,7 +189,7 @@ const PROJECTS: ProjectSpec[] = [
   },
   {
     title: "親子体験ツアー 2泊3日",
-    agency: "aozora", status: "operating", start: -1, nights: 2, adult: 12, child: 10, lang: "日本語", owner: "nakamura",
+    agency: "aozora", status: "operating", start: -1, nights: 2, adult: 12, child: 10, lang: "日本語", owner: "staff2",
     arrs: [
       { cat: "lodging", sup: "shiokaze", day: 0, desc: "2泊2食付き 和洋室", qty: 44, cost: 11000, price: 13000, status: "confirmed", conf: "SK-7690" },
       { cat: "bus", sup: "minato", day: 0, time: "09:00", desc: "中型バス 3日間", qty: 1, cost: 210000, price: 245000, status: "confirmed", conf: "MT-0870" },
@@ -199,7 +199,7 @@ const PROJECTS: ProjectSpec[] = [
   },
   {
     title: "大学ゼミ合宿 2泊3日",
-    agency: "mirai", status: "settling", start: -12, nights: 2, adult: 22, child: 0, lang: "日本語", owner: "takahashi",
+    agency: "mirai", status: "settling", start: -12, nights: 2, adult: 22, child: 0, lang: "日本語", owner: "staff1",
     arrs: [
       { cat: "lodging", sup: "tsubaki", day: 0, desc: "2泊2食付き 会議室付き", qty: 44, cost: 10000, price: 11800, status: "confirmed", conf: "TB-2150", actual: 440000, invoice: true },
       { cat: "bus", sup: "aoba", day: 0, time: "08:00", desc: "中型バス 往復", qty: 1, cost: 150000, price: 175000, status: "confirmed", conf: "AB-5410", actual: 158000, invoice: true },
@@ -208,7 +208,7 @@ const PROJECTS: ProjectSpec[] = [
   },
   {
     title: "秋の紅葉ツアー 1泊2日",
-    agency: "aozora", status: "completed", start: -40, nights: 1, adult: 30, child: 0, lang: "日本語", owner: "takahashi",
+    agency: "aozora", status: "completed", start: -40, nights: 1, adult: 30, child: 0, lang: "日本語", owner: "staff1",
     arrs: [
       { cat: "lodging", sup: "shiokaze", day: 0, desc: "1泊2食付き 和室", qty: 30, cost: 13000, price: 15200, status: "confirmed", conf: "SK-7311", actual: 390000, invoice: true },
       { cat: "bus", sup: "aoba", day: 0, time: "08:00", desc: "大型バス 2日間", qty: 1, cost: 180000, price: 210000, status: "confirmed", conf: "AB-5180", actual: 180000, invoice: true },
@@ -217,7 +217,7 @@ const PROJECTS: ProjectSpec[] = [
   },
   {
     title: "インセンティブ旅行 2泊3日",
-    agency: "gtj", status: "cancelled", start: 12, nights: 2, adult: 30, child: 0, lang: "英語", owner: "nakamura",
+    agency: "gtj", status: "cancelled", start: 12, nights: 2, adult: 30, child: 0, lang: "英語", owner: "staff2",
     note: "依頼元の都合で催行中止。取消料は依頼元へ請求する",
     arrs: [
       { cat: "lodging", sup: "shiokaze", day: 0, desc: "2泊 朝食付き ツイン", qty: 60, cost: 12000, price: 14500, status: "cancelled", cancelFrom: -14, conf: "SK-7740", cancelFee: 144000 },
@@ -407,15 +407,15 @@ export async function seedDemoData(db: SeedDb, opts: { today: string; password: 
   const pid = (title: string) => projectRows.find((r) => r.title === title)!.id;
 
   await db.insert(s.tasks).values([
-    { projectId: pid("韓国団体 2泊3日 温泉と街歩き"), title: "ガイド事務所へ回答の催促を電話する", dueDate: today, assigneeUserId: userIds.nakamura },
-    { projectId: pid("大学ゼミ合宿 2泊3日"), title: "和食処 いろりの請求書を受け取り、精算額を入れる", dueDate: addDays(today, 2), assigneeUserId: userIds.takahashi },
-    { projectId: pid("高校2年 修学旅行(平和学習コース)"), title: "見積書を作って依頼元へ送る", dueDate: addDays(today, 4), assigneeUserId: userIds.nakamura },
+    { projectId: pid("韓国団体 2泊3日 温泉と街歩き"), title: "ガイド事務所へ回答の催促を電話する", dueDate: today, assigneeUserId: userIds.staff2 },
+    { projectId: pid("大学ゼミ合宿 2泊3日"), title: "和食処 いろりの請求書を受け取り、精算額を入れる", dueDate: addDays(today, 2), assigneeUserId: userIds.staff1 },
+    { projectId: pid("高校2年 修学旅行(平和学習コース)"), title: "見積書を作って依頼元へ送る", dueDate: addDays(today, 4), assigneeUserId: userIds.staff2 },
   ]);
 
   await db.insert(s.comments).values([
-    { projectId: pid("韓国団体 2泊3日 温泉と街歩き"), body: "オプショナルの観光タクシーは参加者の確定待ち。2台で仮手配中。", authorUserId: userIds.nakamura, createdAt: at(-2, "16:20") },
-    { projectId: pid("インセンティブ旅行 2泊3日"), body: "依頼元から中止の連絡(FAX)。取消依頼を全仕入先へ送付済み。", authorUserId: userIds.nakamura, createdAt: at(-1, "11:30") },
-    { projectId: pid("シニア旅行会 1泊2日"), body: "車いす利用の方が1名。バス会社に伝達済み。", authorUserId: userIds.takahashi, createdAt: at(-4, "09:45") },
+    { projectId: pid("韓国団体 2泊3日 温泉と街歩き"), body: "オプショナルの観光タクシーは参加者の確定待ち。2台で仮手配中。", authorUserId: userIds.staff2, createdAt: at(-2, "16:20") },
+    { projectId: pid("インセンティブ旅行 2泊3日"), body: "依頼元から中止の連絡(FAX)。取消依頼を全仕入先へ送付済み。", authorUserId: userIds.staff2, createdAt: at(-1, "11:30") },
+    { projectId: pid("シニア旅行会 1泊2日"), body: "車いす利用の方が1名。バス会社に伝達済み。", authorUserId: userIds.staff1, createdAt: at(-4, "09:45") },
   ]);
 
   await db.insert(s.auditLogs).values({ action: "system.seed", targetType: "database", changes: { today } });

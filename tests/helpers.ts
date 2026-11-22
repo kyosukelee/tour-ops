@@ -17,7 +17,7 @@ export async function createTestDb() {
   await seedDemoData(db, { today: TODAY, password: "test-password" });
 
   const [admin] = await db.select().from(s.users).where(eq(s.users.email, "admin@tour-ops.example"));
-  const [staff] = await db.select().from(s.users).where(eq(s.users.email, "takahashi@tour-ops.example"));
+  const [staff] = await db.select().from(s.users).where(eq(s.users.email, "staff1@tour-ops.example"));
   const adminCtx: Ctx & { today: string } = {
     actor: { id: admin.id, name: admin.name, role: "admin" },
     request: { ipAddress: "127.0.0.1", userAgent: "vitest" },
