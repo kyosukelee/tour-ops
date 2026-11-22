@@ -1,8 +1,9 @@
-// ステップ1の確認用トップページ: DBにつながり、デモデータが入っていることを見る
+// 確認用トップページ: ログインした担当者と、DBのデモデータを表示する
 // (ステップ3で案件一覧・ダッシュボードに置き換える)
 import { Suspense } from "react";
 import { asc, eq } from "drizzle-orm";
-import { connection } from "next/server";
+import { logout } from "@/app/actions/auth";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb, schema as s } from "@/db";
@@ -14,6 +15,7 @@ import {
   type ProjectStatus,
 } from "@/lib/status";
 import { formatYen } from "@/lib/utils";
+import { requireActor } from "@/lib/session";
 
 export default function Page() {
   return (
@@ -22,18 +24,35 @@ export default function Page() {
         <p className="text-sm text-muted-foreground">tour-ops</p>
         <h1 className="text-2xl font-semibold">観光手配案件管理(開発中)</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          ステップ1の確認用ページです。データベースの接続とデモデータを確認できます。
+          確認用ページです。ログインとデータベースの接続、デモデータを確認できます。
         </p>
       </header>
-      <Suspense fallback={<p className="text-sm text-muted-foreground">案件を読み込んでいます…</p>}>
+      <Suspense fallback={<p className="text-sm text-muted-foreground">読み込んでいます…</p>}>
+        <UserBar />
         <ProjectList />
       </Suspense>
     </main>
   );
 }
 
+async function UserBar() {
+  const actor = await requireActor(); // 未ログインなら /login へ
+  return (
+    <div className="mb-6 flex items-center justify-between rounded-lg border px-4 py-3 text-sm">
+      <p>
+        {actor.name} さん <span className="ml-2 text-xs text-muted-foreground">{actor.role === "admin" ? "管理者" : "手配担当"}</span>
+      </p>
+      <form action={logout}>
+        <Button type="submit" variant="outline" size="sm">
+          ログアウト
+        </Button>
+      </form>
+    </div>
+  );
+}
+
 async function ProjectList() {
-  await connection(); // 毎回のアクセス時にDBを読む(ビルド時には読まない)
+  await requireActor(); // 毎回のアクセス時に、ログインを確かめてからDBを読む
 
   let rows;
   try {

@@ -1,14 +1,10 @@
-// DB接続(Neon の HTTP ドライバ)。サーバー側からだけ使う
+// DB接続(node-postgres)。サーバー側からだけ使う
+// 標準の PostgreSQL ドライバなので、Neon 以外(AWS RDS・Azure など)にもそのまま移せる
 import "server-only";
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 import * as schema from "./schema";
-
-type Db = ReturnType<typeof createDb>;
-
-function createDb(url: string) {
-  return drizzle({ client: neon(url), schema });
-}
+import type { Db } from "./types";
 
 let cached: Db | undefined;
 
@@ -19,7 +15,9 @@ export function getDb(): Db {
     if (!url) {
       throw new Error("DATABASE_URL が設定されていません(.env.local を確認してください)");
     }
-    cached = createDb(url);
+    // サーバーレスでは接続を少なめに持つ(Neon は接続文字列の -pooler で接続をまとめる)
+    const pool = new Pool({ connectionString: url, max: 5 });
+    cached = drizzle({ client: pool, schema }) as unknown as Db;
   }
   return cached;
 }

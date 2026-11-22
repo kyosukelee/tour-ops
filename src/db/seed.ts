@@ -2,13 +2,13 @@
 // 「今週出発」「期限超過」などが表示されるようにする。会社名・人名はすべて架空。
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
-import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
+import type { Db } from "./types";
 import { hashPassword } from "better-auth/crypto";
 import * as s from "./schema";
 import { addDays, tokyoDateTime } from "../lib/dates";
 import type { ArrangementStatus, ProjectStatus } from "../lib/status";
 
-export type SeedDb = PgDatabase<PgQueryResultHKT, typeof s>;
+export type SeedDb = Db;
 
 type Category = (typeof s.arrangementCategory.enumValues)[number];
 

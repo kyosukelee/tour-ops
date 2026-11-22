@@ -4,7 +4,7 @@
 宿・バス・観光タクシー・ガイド・食事などの手配明細と、その回答期限・取消料発生日を取りこぼさず追えることを目指しています。
 ポートフォリオ用のデモで、会社名・人名・データはすべて架空です。
 
-> 開発状況: **ステップ1(土台)まで完了**。ログイン・画面・手配依頼書PDFなどは順に追加します。
+> 開発状況: **ステップ2(ログインとサーバー処理)まで完了**。画面・手配依頼書PDFなどは順に追加します。
 
 ## 技術構成
 
@@ -42,6 +42,20 @@
 
 案件ステータスのルールは `src/lib/status.ts` の1か所にまとめています。
 
+## サーバー処理の作り
+
+| 場所 | 役割 |
+| --- | --- |
+| `src/lib/validation.ts` | 入力チェック(Zod)。画面とサーバーで同じ定義を使う |
+| `src/server/*.ts` | 業務処理(案件・手配明細・マスタ・担当者)。権限・ステータス遷移・変更履歴・自動タスク・操作ログをここで扱う。画面に依存しないのでテストから直接呼べる |
+| `src/app/actions/*.ts` | Server Action。ログインを確かめ、入力をチェックし、業務処理を呼ぶだけの薄い層 |
+| `src/lib/auth.ts` / `src/lib/session.ts` | ログイン(Better Auth)と、ログイン中の担当者の取り出し |
+| `src/proxy.ts` | 未ログインなら /login へ回す簡易チェック(本当の確認は各処理で毎回行う) |
+
+- 複数のテーブルにまたがる更新は、すべてトランザクションでまとめて確定する
+- 操作ログは追記のみ。パスワードなどの秘密の値は記録しない
+- 利用停止にした担当者はログインできず、使用中のセッションもすぐに消える
+
 ## 動かし方(Windows / PowerShell)
 
 前提: Node.js 22 以上、Neon のアカウント(無料プラン)
@@ -50,8 +64,9 @@
 # 1. 依存関係を入れる
 npm.cmd install
 
-# 2. 環境変数を用意して、DATABASE_URL に Neon の接続文字列を入れる
+# 2. 環境変数を用意する(DATABASE_URL と BETTER_AUTH_SECRET を入れる)
 Copy-Item .env.example .env.local
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"   # 秘密鍵を作る
 notepad .env.local
 
 # 3. テーブルを作り、デモデータを入れる
@@ -72,7 +87,7 @@ npm.cmd run dev
 | 手配担当 | takahashi@tour-ops.example |
 | 手配担当 | nakamura@tour-ops.example |
 
-パスワードは `.env.local` の `SEED_DEMO_PASSWORD`(初期値 `tour-ops-demo`)です。ログイン画面はステップ2で追加します。
+パスワードは `.env.local` の `SEED_DEMO_PASSWORD`(初期値 `tour-ops-demo`)です。`DEMO_MODE=true` のときは、ログイン画面にも表示されます。
 
 ## よく使うコマンド
 
@@ -81,7 +96,7 @@ npm.cmd run dev
 | `npm.cmd run dev` | 開発サーバー |
 | `npm.cmd run lint` | Lint |
 | `npm.cmd run typecheck` | 型チェック |
-| `npm.cmd test` | テスト(PGlite でマイグレーションとデモデータも検証。DB接続は不要) |
+| `npm.cmd test` | テスト(PGlite でマイグレーション・デモデータ・業務処理を検証。DB接続は不要) |
 | `npm.cmd run db:generate` | スキーマ変更後にマイグレーションSQLを作る |
 | `npm.cmd run db:migrate` | マイグレーションを Neon に反映する |
 | `npm.cmd run db:seed` | デモデータを入れ直す |
