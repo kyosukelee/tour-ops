@@ -90,6 +90,20 @@ export const arrangementInput = z.object({
 });
 export type ArrangementInput = z.infer<typeof arrangementInput>;
 
+// ---------- タスク・コメント ----------
+
+export const taskInput = z.object({
+  title: requiredText("内容", 200),
+  dueDate: isoDate,
+  assigneeUserId: z.union([z.literal(""), z.string().min(1)]).nullish().transform((v) => (v ? v : null)),
+});
+export type TaskInput = z.infer<typeof taskInput>;
+
+export const taskDoneInput = z.object({ done: checkbox });
+
+export const commentInput = z.object({ body: requiredText("コメント", 2000) });
+export type CommentInput = z.infer<typeof commentInput>;
+
 // ---------- マスタ ----------
 
 const optionalEmail = z

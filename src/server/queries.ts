@@ -1,6 +1,6 @@
 // 画面表示用の読み取り処理。書き込みは projects.ts / arrangements.ts などのサービスで行う
 // DB を引数で受け取るので、テストから PGlite でそのまま呼べる
-import { and, asc, desc, eq, gte, ilike, inArray, lte, notInArray, or, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, like, lt, lte, max, notInArray, or, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import * as s from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -121,7 +121,8 @@ export async function getProjectDetail(db: Db, id: string) {
   if (!project) return null;
 
   const changer = alias(s.users, "changer");
-  const [arrangements, tasks, history] = await Promise.all([
+  const author = alias(s.users, "author");
+  const [arrangements, tasks, history, comments] = await Promise.all([
     db
       .select({ a: s.arrangements, supplierName: s.suppliers.name })
       .from(s.arrangements)
@@ -145,6 +146,12 @@ export async function getProjectDetail(db: Db, id: string) {
       .leftJoin(s.arrangements, eq(s.statusHistory.arrangementId, s.arrangements.id))
       .where(eq(s.statusHistory.projectId, id))
       .orderBy(desc(s.statusHistory.changedAt)),
+    db
+      .select({ c: s.comments, authorName: author.name })
+      .from(s.comments)
+      .leftJoin(author, eq(s.comments.authorUserId, author.id))
+      .where(eq(s.comments.projectId, id))
+      .orderBy(desc(s.comments.createdAt)),
   ]);
 
   const arrs = arrangements.map((r) => ({ ...r.a, status: r.a.status as ArrangementStatus, supplierName: r.supplierName }));
@@ -162,6 +169,7 @@ export async function getProjectDetail(db: Db, id: string) {
     ownerName: project.ownerName,
     arrangements: arrs,
     tasks: tasks.map((r) => ({ ...r.t, assigneeName: r.assigneeName })),
+    comments: comments.map((r) => ({ ...r.c, authorName: r.authorName })),
     history: history.map((r) => ({ ...r.h, changedByName: r.changedByName, arrangementDescription: r.arrangementDescription })),
     totals: {
       sales,
@@ -235,5 +243,128 @@ export async function getDashboard(db: Db, opts: { today: string; userId?: strin
     overdueTasks: tasks.filter((t) => t.dueDate < today),
     upcomingTasks: tasks.filter((t) => t.dueDate >= today),
     departures: departures.map((d) => ({ ...d, status: d.status as ProjectStatus })),
+  };
+}
+
+// ---------- タスク一覧 ----------
+
+export type TaskFilter = { show?: string; assignee?: string };
+
+export async function listTasks(db: Db, filter: TaskFilter & { today: string; userId: string }) {
+  const where: SQL[] = [];
+  const show = filter.show === "done" ? "done" : "open";
+  where.push(eq(s.tasks.done, show === "done"));
+  if (filter.assignee === "me") where.push(eq(s.tasks.assigneeUserId, filter.userId));
+  else if (filter.assignee) where.push(eq(s.tasks.assigneeUserId, filter.assignee));
+
+  const rows = await db
+    .select({
+      t: s.tasks,
+      assigneeName: s.users.name,
+      projectCode: s.projects.code,
+      projectTitle: s.projects.title,
+      projectStatus: s.projects.status,
+    })
+    .from(s.tasks)
+    .innerJoin(s.projects, eq(s.tasks.projectId, s.projects.id))
+    .leftJoin(s.users, eq(s.tasks.assigneeUserId, s.users.id))
+    .where(and(...where))
+    // 未完了は期限の近い順、完了は新しい順
+    .orderBy(show === "done" ? desc(s.tasks.dueDate) : asc(s.tasks.dueDate), asc(s.projects.code))
+    .limit(show === "done" ? 100 : 500);
+
+  return rows.map((r) => ({
+    ...r.t,
+    assigneeName: r.assigneeName,
+    projectCode: r.projectCode,
+    projectTitle: r.projectTitle,
+    projectStatus: r.projectStatus as ProjectStatus,
+  }));
+}
+
+// ---------- マスタ ----------
+
+export async function listAgencies(db: Db) {
+  const [rows, counts] = await Promise.all([
+    db.select().from(s.agencies).orderBy(asc(s.agencies.name)),
+    db
+      .select({ agencyId: s.projects.agencyId, n: count() })
+      .from(s.projects)
+      .where(notInArray(s.projects.status, [...TERMINAL_STATUSES]))
+      .groupBy(s.projects.agencyId),
+  ]);
+  return rows.map((r) => ({ ...r, openProjects: counts.find((c) => c.agencyId === r.id)?.n ?? 0 }));
+}
+
+export async function listSuppliers(db: Db) {
+  const [rows, counts] = await Promise.all([
+    db.select().from(s.suppliers).orderBy(asc(s.suppliers.category), asc(s.suppliers.name)),
+    db
+      .select({ supplierId: s.arrangements.supplierId, n: count() })
+      .from(s.arrangements)
+      .where(notInArray(s.arrangements.status, ["cancelled"]))
+      .groupBy(s.arrangements.supplierId),
+  ]);
+  return rows.map((r) => ({ ...r, arrangementCount: counts.find((c) => c.supplierId === r.id)?.n ?? 0 }));
+}
+
+// ---------- 担当者 ----------
+
+export async function listUsers(db: Db) {
+  const [rows, logins] = await Promise.all([
+    db
+      .select({ id: s.users.id, name: s.users.name, email: s.users.email, role: s.users.role, active: s.users.active, createdAt: s.users.createdAt })
+      .from(s.users)
+      .orderBy(desc(s.users.active), asc(s.users.name)),
+    db
+      .select({ userId: s.auditLogs.userId, at: max(s.auditLogs.createdAt) })
+      .from(s.auditLogs)
+      .where(eq(s.auditLogs.action, "auth.login"))
+      .groupBy(s.auditLogs.userId),
+  ]);
+  return rows.map((r) => ({ ...r, lastLoginAt: logins.find((l) => l.userId === r.id)?.at ?? null }));
+}
+
+// ---------- 操作ログ ----------
+
+export const AUDIT_PAGE_SIZE = 50;
+
+export type AuditFilter = { kind?: string; userId?: string; date?: string; page?: number };
+
+export async function listAuditLogs(db: Db, filter: AuditFilter = {}) {
+  const where: SQL[] = [];
+  if (filter.kind) where.push(like(s.auditLogs.action, `${filter.kind.replace(/[\\%_]/g, "")}.%`));
+  if (filter.userId) where.push(eq(s.auditLogs.userId, filter.userId));
+  if (filter.date && /^\d{4}-\d{2}-\d{2}$/.test(filter.date)) {
+    // 日本時間のその日
+    where.push(gte(s.auditLogs.createdAt, new Date(`${filter.date}T00:00:00+09:00`)));
+    where.push(lt(s.auditLogs.createdAt, new Date(`${addDays(filter.date, 1)}T00:00:00+09:00`)));
+  }
+  const page = Math.max(1, Math.floor(filter.page ?? 1));
+  const cond = where.length ? and(...where) : undefined;
+
+  const [rows, [{ total }]] = await Promise.all([
+    db
+      .select({
+        log: s.auditLogs,
+        userName: s.users.name,
+        projectCode: s.projects.code,
+        projectTitle: s.projects.title,
+      })
+      .from(s.auditLogs)
+      .leftJoin(s.users, eq(s.auditLogs.userId, s.users.id))
+      .leftJoin(s.projects, eq(s.auditLogs.projectId, s.projects.id))
+      .where(cond)
+      .orderBy(desc(s.auditLogs.createdAt))
+      .limit(AUDIT_PAGE_SIZE)
+      .offset((page - 1) * AUDIT_PAGE_SIZE),
+    db.select({ total: count() }).from(s.auditLogs).where(cond),
+  ]);
+
+  return {
+    page,
+    total,
+    pageCount: Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE)),
+    rows: rows.map((r) => ({ ...r.log, userName: r.userName, projectCode: r.projectCode, projectTitle: r.projectTitle })),
   };
 }

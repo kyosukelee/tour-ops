@@ -5,6 +5,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PencilIcon, PlusIcon } from "lucide-react";
 import { changeProjectStatusAction, createArrangementAction, updateArrangementAction } from "@/app/actions/projects";
+import { addCommentAction, createTaskAction, deleteTaskAction, setTaskDoneAction } from "@/app/actions/tasks";
+import { ActionButton } from "@/components/form/action-button";
+import { CommentForm, TaskAddForm } from "@/components/projects/task-parts";
 import { Loading } from "@/components/app/page-header";
 import { ArrangementDialog, type SupplierOption } from "@/components/projects/arrangement-dialog";
 import { StatusActions } from "@/components/projects/status-actions";
@@ -27,13 +30,14 @@ import {
   type ProjectStatus,
 } from "@/lib/status";
 import { cn, formatDate, formatDateRange, formatDateTime, formatYen } from "@/lib/utils";
-import { getProjectDetail, listSupplierOptions, type ProjectDetail } from "@/server/queries";
+import { getProjectDetail, listSupplierOptions, listUserOptions, type ProjectDetail } from "@/server/queries";
 
 export const metadata: Metadata = { title: "案件詳細 | tour-ops" };
 
 const TABS = [
   { key: "arrangements", label: "手配明細" },
   { key: "tasks", label: "タスク" },
+  { key: "comments", label: "コメント" },
   { key: "history", label: "履歴" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
@@ -57,7 +61,7 @@ async function ProjectView({
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const db = getDb();
-  const [project, suppliers] = await Promise.all([getProjectDetail(db, id), listSupplierOptions(db)]);
+  const [project, suppliers, users] = await Promise.all([getProjectDetail(db, id), listSupplierOptions(db), listUserOptions(db)]);
   if (!project) notFound();
 
   const tab: TabKey = TABS.some((t) => t.key === sp.tab) ? (sp.tab as TabKey) : "arrangements";
@@ -159,12 +163,14 @@ async function ProjectView({
               {t.label}
               {t.key === "arrangements" && <span className="ml-1 text-xs">({project.arrangements.length})</span>}
               {t.key === "tasks" && openTasks > 0 && <span className="ml-1 text-xs">({openTasks})</span>}
+              {t.key === "comments" && project.comments.length > 0 && <span className="ml-1 text-xs">({project.comments.length})</span>}
             </Link>
           ))}
         </nav>
         <div className="pt-4">
           {tab === "arrangements" && <ArrangementsTab project={project} suppliers={suppliers as SupplierOption[]} />}
-          {tab === "tasks" && <TasksTab project={project} />}
+          {tab === "tasks" && <TasksTab project={project} users={users.filter((u) => u.active)} />}
+          {tab === "comments" && <CommentsTab project={project} />}
           {tab === "history" && <HistoryTab project={project} />}
         </div>
       </div>
@@ -355,30 +361,85 @@ function DueDates({ replyDue, cancelFeeFrom, settled }: { replyDue: string | nul
   );
 }
 
-function TasksTab({ project }: { project: ProjectDetail }) {
+function TasksTab({ project, users }: { project: ProjectDetail; users: { id: string; name: string }[] }) {
   const today = todayInTokyo();
-  if (project.tasks.length === 0) return <p className="text-sm text-muted-foreground">タスクはありません。</p>;
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      <TaskAddForm action={createTaskAction.bind(null, project.id)} users={users} defaultDue={today} />
       <p className="text-xs text-muted-foreground">
-        「自動」は手配明細の回答期限・取消料発生日から作られたタスクです。タスクの追加・完了の操作は次の更新で追加します。
+        「自動」のタスクは手配明細の回答期限・取消料発生日から作られ、手配が確定・取消になると自動で完了します。
       </p>
-      <ul className="divide-y rounded-lg border text-sm">
-        {project.tasks.map((t) => (
-          <li key={t.id} className={cn("flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2", t.done && "text-muted-foreground")}>
-            <span className={cn("w-24 tabular-nums", !t.done && t.dueDate < today && "font-medium text-destructive")}>
-              {formatDate(t.dueDate)}
-            </span>
-            <span className={cn("min-w-0 flex-1", t.done && "line-through")}>{t.title}</span>
-            {t.source === "auto" && (
-              <Badge variant="outline" className="text-[10px]">
-                自動
-              </Badge>
-            )}
-            <span className="text-xs text-muted-foreground">{t.done ? "完了" : (t.assigneeName ?? "担当未定")}</span>
-          </li>
-        ))}
-      </ul>
+      {project.tasks.length === 0 ? (
+        <p className="text-sm text-muted-foreground">タスクはありません。</p>
+      ) : (
+        <ul className="divide-y rounded-lg border text-sm">
+          {project.tasks.map((t) => (
+            <li key={t.id} className={cn("flex items-start gap-3 px-4 py-2", t.done && "text-muted-foreground")}>
+              <span className={cn("w-16 shrink-0 pt-0.5 tabular-nums sm:w-24", !t.done && t.dueDate < today && "font-medium text-destructive")}>
+                {formatDate(t.dueDate)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <span className={cn("block", t.done && "line-through")}>{t.title}</span>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
+                  <span>担当: {t.assigneeName ?? "未定"}</span>
+                  {t.source === "auto" && (
+                    <Badge variant="outline" className="text-[10px]">
+                      自動
+                    </Badge>
+                  )}
+                </div>
+              </div>
+              {t.source === "manual" ? (
+                <span className="flex shrink-0 flex-wrap justify-end gap-1">
+                  <ActionButton
+                    action={setTaskDoneAction.bind(null, t.id)}
+                    fields={{ done: t.done ? "false" : "true" }}
+                    size="sm"
+                    variant={t.done ? "ghost" : "outline"}
+                    aria-label={`${t.title} を${t.done ? "未完了に戻す" : "完了にする"}`}
+                  >
+                    {t.done ? "戻す" : "完了"}
+                  </ActionButton>
+                  <ActionButton
+                    action={deleteTaskAction.bind(null, t.id)}
+                    confirm="削除しますか?"
+                    size="sm"
+                    variant="ghost"
+                    className="text-muted-foreground"
+                    aria-label={`${t.title} を削除`}
+                  >
+                    削除
+                  </ActionButton>
+                </span>
+              ) : (
+                <span className="shrink-0 text-xs text-muted-foreground">{t.done ? "完了" : "自動で完了"}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function CommentsTab({ project }: { project: ProjectDetail }) {
+  return (
+    <div className="max-w-3xl space-y-4">
+      <CommentForm action={addCommentAction.bind(null, project.id)} />
+      {project.comments.length === 0 ? (
+        <p className="text-sm text-muted-foreground">コメントはまだありません。</p>
+      ) : (
+        <ul className="space-y-3">
+          {project.comments.map((c) => (
+            <li key={c.id} className="rounded-lg border px-4 py-3 text-sm">
+              <p className="mb-1 text-xs text-muted-foreground">
+                {c.authorName ?? "不明"} ・ {formatDateTime(c.createdAt)}
+              </p>
+              <p className="whitespace-pre-wrap">{c.body}</p>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

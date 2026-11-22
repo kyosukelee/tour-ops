@@ -10,13 +10,13 @@ import { can } from "@/server/core";
 const BASE_ITEMS: NavItem[] = [
   { href: "/", label: "ダッシュボード" },
   { href: "/projects", label: "案件" },
-  { href: "/tasks", label: "タスク", ready: false },
-  { href: "/agencies", label: "依頼元", ready: false },
-  { href: "/suppliers", label: "仕入先", ready: false },
+  { href: "/tasks", label: "タスク" },
+  { href: "/agencies", label: "依頼元" },
+  { href: "/suppliers", label: "仕入先" },
 ];
 const ADMIN_ITEMS: NavItem[] = [
-  { href: "/users", label: "担当者", ready: false },
-  { href: "/audit", label: "操作ログ", ready: false },
+  { href: "/users", label: "担当者" },
+  { href: "/audit", label: "操作ログ" },
 ];
 
 export default function AppLayout({ children }: LayoutProps<"/">) {
