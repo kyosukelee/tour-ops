@@ -5,7 +5,7 @@ import { getActor, getRequestInfo } from "@/lib/session";
 import { recordAudit } from "@/server/audit";
 import { AppError } from "@/server/core";
 import { recordedRequestPdf } from "@/server/requests";
-import { pdfResponse, textResponse } from "../../../pdf-response";
+import { pdfResponse, textResponse } from "@/app/api/pdf-response";
 
 export async function GET(_req: Request, { params }: RouteContext<"/api/requests/[id]/pdf">) {
   const actor = await getActor();

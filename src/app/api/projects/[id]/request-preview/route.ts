@@ -5,7 +5,7 @@ import { getActor } from "@/lib/session";
 import { requestInput } from "@/lib/validation";
 import { AppError } from "@/server/core";
 import { previewRequestPdf } from "@/server/requests";
-import { pdfResponse, textResponse } from "../../../pdf-response";
+import { pdfResponse, textResponse } from "@/app/api/pdf-response";
 
 export async function GET(req: Request, { params }: RouteContext<"/api/projects/[id]/request-preview">) {
   const actor = await getActor();

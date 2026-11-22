@@ -277,6 +277,9 @@ export const attachments = pgTable(
     requestId: uuid("request_id").references(() => supplierRequests.id), // 仕入先の回答のとき
     kind: attachmentKind("kind").notNull(),
     filePath: text("file_path").notNull(), // Cloudflare R2 上のキー
+    fileName: text("file_name").notNull().default(""), // アップロードしたときのファイル名
+    contentType: text("content_type").notNull().default("application/octet-stream"),
+    sizeBytes: integer("size_bytes").notNull().default(0),
     receivedAt: timestamp("received_at", { withTimezone: true }),
     note: text("note"),
     uploadedBy: text("uploaded_by").references(() => users.id),

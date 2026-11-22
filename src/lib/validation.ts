@@ -1,6 +1,14 @@
 // 入力チェック(Zod)。画面のフォームとサーバー処理で同じ定義を使う
 import { z } from "zod";
-import { ARRANGEMENT_CATEGORIES as CATEGORIES, ARRANGEMENT_STATUSES, PROJECT_STATUSES, REQUEST_KINDS, REQUEST_METHODS } from "./status";
+import {
+  ARRANGEMENT_CATEGORIES as CATEGORIES,
+  ARRANGEMENT_STATUSES,
+  ATTACHMENT_KINDS,
+  ATTACHMENT_MAX_BYTES,
+  PROJECT_STATUSES,
+  REQUEST_KINDS,
+  REQUEST_METHODS,
+} from "./status";
 
 // フォームの空欄は null として扱う
 const optionalText = (max = 500) =>
@@ -137,6 +145,20 @@ export const replyInput = z.object({
     .min(1, "回答を入力する手配がありません"),
 });
 export type ReplyInput = z.infer<typeof replyInput>;
+
+// ---------- 添付書類 ----------
+
+export const attachmentInput = z.object({
+  kind: z.enum(ATTACHMENT_KINDS, { error: "書類の種類を選んでください" }),
+  requestId: z.union([z.literal(""), z.uuid()]).nullish().transform((v) => (v ? v : null)),
+  receivedAt: optionalDate,
+  note: optionalText(500),
+  file: z
+    .instanceof(File, { message: "ファイルを選んでください" })
+    .refine((f) => f.size > 0, "ファイルを選んでください")
+    .refine((f) => f.size <= ATTACHMENT_MAX_BYTES, "ファイルは4MBまでにしてください(写真は縮小してください)"),
+});
+export type AttachmentInput = z.infer<typeof attachmentInput>;
 
 // ---------- マスタ ----------
 

@@ -253,6 +253,57 @@ export async function getDashboard(db: Db, opts: { today: string; userId?: strin
   };
 }
 
+// 今月の売上・粗利見込みと、手配の注意(回答期限切れ・受注後なのに未手配)
+export async function getArrangementAlerts(db: Db, opts: { today: string }) {
+  const { today } = opts;
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const nextMonth = addDays(`${today.slice(0, 7)}-28`, 4).slice(0, 7) + "-01";
+
+  // 今月出発の案件(失注・キャンセルを除く)
+  const monthProjects = await db
+    .select({ id: s.projects.id })
+    .from(s.projects)
+    .where(and(gte(s.projects.startDate, monthStart), lt(s.projects.startDate, nextMonth), notInArray(s.projects.status, ["lost", "cancelled"])));
+  const monthArrs = monthProjects.length
+    ? await db.select().from(s.arrangements).where(inArray(s.arrangements.projectId, monthProjects.map((p) => p.id)))
+    : [];
+  const monthSales = monthArrs.filter((a) => a.status !== "cancelled").reduce((n, a) => n + a.unitPrice * a.quantity, 0);
+  const monthProfit = grossProfit(monthArrs as ArrangementForCalc[]);
+
+  const base = {
+    id: s.arrangements.id,
+    description: s.arrangements.description,
+    serviceDate: s.arrangements.serviceDate,
+    replyDue: s.arrangements.replyDue,
+    status: s.arrangements.status,
+    supplierName: s.suppliers.name,
+    projectId: s.projects.id,
+    projectCode: s.projects.code,
+    projectTitle: s.projects.title,
+  };
+  const [overdueReplies, unarranged] = await Promise.all([
+    // 依頼中のまま回答期限を過ぎた手配
+    db
+      .select(base)
+      .from(s.arrangements)
+      .innerJoin(s.projects, eq(s.arrangements.projectId, s.projects.id))
+      .leftJoin(s.suppliers, eq(s.arrangements.supplierId, s.suppliers.id))
+      .where(and(eq(s.arrangements.status, "requested"), lt(s.arrangements.replyDue, today), notInArray(s.projects.status, [...TERMINAL_STATUSES])))
+      .orderBy(asc(s.arrangements.replyDue))
+      .limit(20),
+    // 受注したのに、まだ依頼もしていない手配
+    db
+      .select(base)
+      .from(s.arrangements)
+      .innerJoin(s.projects, eq(s.arrangements.projectId, s.projects.id))
+      .leftJoin(s.suppliers, eq(s.arrangements.supplierId, s.suppliers.id))
+      .where(and(eq(s.arrangements.status, "pending"), inArray(s.projects.status, ["arranging", "arranged", "operating"])))
+      .orderBy(asc(s.arrangements.serviceDate))
+      .limit(20),
+  ]);
+  return { monthStart, monthSales, monthProfit, monthProjectCount: monthProjects.length, overdueReplies, unarranged };
+}
+
 // ---------- タスク一覧 ----------
 
 export type TaskFilter = { show?: string; assignee?: string };
@@ -430,3 +481,17 @@ export async function lastDailyRun(db: Db) {
     .limit(1);
   return row ? { at: row.createdAt, ...(row.changes as { trigger?: string; mailsSent?: number; mailsFailed?: number }) } : null;
 }
+
+// ---------- 添付書類 ----------
+
+export async function listAttachments(db: Db, projectId: string) {
+  const rows = await db
+    .select({ a: s.attachments, uploaderName: s.users.name })
+    .from(s.attachments)
+    .leftJoin(s.users, eq(s.attachments.uploadedBy, s.users.id))
+    .where(eq(s.attachments.projectId, projectId))
+    .orderBy(desc(s.attachments.createdAt));
+  return rows.map((r) => ({ ...r.a, uploaderName: r.uploaderName }));
+}
+
+export type AttachmentRow = Awaited<ReturnType<typeof listAttachments>>[number];

@@ -5,9 +5,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FileTextIcon, PencilIcon, PlusIcon, SendIcon } from "lucide-react";
 import { changeProjectStatusAction, createArrangementAction, updateArrangementAction } from "@/app/actions/projects";
+import { deleteAttachmentAction, uploadAttachmentAction } from "@/app/actions/attachments";
 import { recordReplyAction, sendRequestAction } from "@/app/actions/requests";
 import { addCommentAction, createTaskAction, deleteTaskAction, setTaskDoneAction } from "@/app/actions/tasks";
 import { ActionButton } from "@/components/form/action-button";
+import { AttachmentForm } from "@/components/projects/attachment-form";
 import { ReplyDialog } from "@/components/projects/reply-dialog";
 import { RequestDialog, type RequestSupplier } from "@/components/projects/request-dialog";
 import { CommentForm, TaskAddForm } from "@/components/projects/task-parts";
@@ -25,6 +27,7 @@ import { requireActor } from "@/lib/session";
 import {
   allowedRequestKinds,
   ARRANGEMENT_STATUS_LABEL,
+  ATTACHMENT_KIND_LABEL,
   canConfirmArrangement,
   REQUEST_KIND_LABEL,
   REQUEST_METHOD_LABEL,
@@ -36,13 +39,23 @@ import {
   type ProjectStatus,
 } from "@/lib/status";
 import { cn, formatDate, formatDateRange, formatDateTime, formatYen } from "@/lib/utils";
-import { getProjectDetail, listRequests, listSupplierOptions, listUserOptions, type ProjectDetail, type RequestRow } from "@/server/queries";
+import {
+  getProjectDetail,
+  listAttachments,
+  listRequests,
+  listSupplierOptions,
+  listUserOptions,
+  type AttachmentRow,
+  type ProjectDetail,
+  type RequestRow,
+} from "@/server/queries";
 
 export const metadata: Metadata = { title: "案件詳細 | tour-ops" };
 
 const TABS = [
   { key: "arrangements", label: "手配明細" },
   { key: "requests", label: "手配依頼" },
+  { key: "attachments", label: "添付書類" },
   { key: "tasks", label: "タスク" },
   { key: "comments", label: "コメント" },
   { key: "history", label: "履歴" },
@@ -68,11 +81,12 @@ async function ProjectView({
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const db = getDb();
-  const [project, suppliers, users, requests] = await Promise.all([
+  const [project, suppliers, users, requests, attachments] = await Promise.all([
     getProjectDetail(db, id),
     listSupplierOptions(db),
     listUserOptions(db),
     listRequests(db, id),
+    listAttachments(db, id),
   ]);
   if (!project) notFound();
 
@@ -94,14 +108,30 @@ async function ProjectView({
               <ProjectStatusBadge status={project.status} className="text-sm" />
             </h1>
           </div>
-          {!terminal && (
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/projects/${id}/edit`}>
-                <PencilIcon className="size-4" />
-                編集
-              </Link>
-            </Button>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                ["internal", "案件票(社内)"],
+                ["agency", "案件票(依頼元向け)"],
+                ["itinerary", "行程表"],
+              ] as const
+            ).map(([type, label]) => (
+              <Button key={type} asChild variant="outline" size="sm">
+                <a href={`/api/projects/${id}/pdf/${type}`} target="_blank" rel="noopener">
+                  <FileTextIcon className="size-4" />
+                  {label}
+                </a>
+              </Button>
+            ))}
+            {!terminal && (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/projects/${id}/edit`}>
+                  <PencilIcon className="size-4" />
+                  編集
+                </Link>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -176,6 +206,7 @@ async function ProjectView({
               {t.key === "arrangements" && <span className="ml-1 text-xs">({project.arrangements.length})</span>}
               {t.key === "tasks" && openTasks > 0 && <span className="ml-1 text-xs">({openTasks})</span>}
               {t.key === "requests" && requests.length > 0 && <span className="ml-1 text-xs">({requests.length})</span>}
+              {t.key === "attachments" && attachments.length > 0 && <span className="ml-1 text-xs">({attachments.length})</span>}
               {t.key === "comments" && project.comments.length > 0 && <span className="ml-1 text-xs">({project.comments.length})</span>}
             </Link>
           ))}
@@ -183,6 +214,7 @@ async function ProjectView({
         <div className="pt-4">
           {tab === "arrangements" && <ArrangementsTab project={project} suppliers={suppliers as SupplierOption[]} />}
           {tab === "requests" && <RequestsTab project={project} suppliers={suppliers} requests={requests} />}
+          {tab === "attachments" && <AttachmentsTab project={project} requests={requests} attachments={attachments} />}
           {tab === "tasks" && <TasksTab project={project} users={users.filter((u) => u.active)} />}
           {tab === "comments" && <CommentsTab project={project} />}
           {tab === "history" && <HistoryTab project={project} />}
@@ -494,6 +526,69 @@ function RequestsTab({ project, suppliers, requests }: { project: ProjectDetail;
       </p>
     </div>
   );
+}
+
+function AttachmentsTab({ project, requests, attachments }: { project: ProjectDetail; requests: RequestRow[]; attachments: AttachmentRow[] }) {
+  const requestLabel = new Map(requests.map((r) => [r.id, `${r.requestNo} ${r.supplierName}`]));
+  const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
+  return (
+    <div className="space-y-4">
+      <AttachmentForm
+        action={uploadAttachmentAction.bind(null, project.id)}
+        requests={requests.filter((r) => r.kind !== "cancel").map((r) => ({ id: r.id, label: requestLabel.get(r.id)! }))}
+        today={todayInTokyo()}
+      />
+      <p className="text-xs text-muted-foreground">
+        FAXで届いた依頼書・変更依頼や、仕入先からの回答の原本をPDFや写真で残します。開いた記録も操作ログに残ります。
+      </p>
+      {attachments.length === 0 ? (
+        <p className="rounded-lg border p-6 text-center text-sm text-muted-foreground">添付書類はまだありません。</p>
+      ) : (
+        <ul className="divide-y rounded-lg border text-sm">
+          {attachments.map((a) => (
+            <li key={a.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
+              {a.contentType.startsWith("image/") ? (
+                // eslint-disable-next-line @next/next/no-img-element -- ログインが必要な画像なので next/image の最適化は使わない
+                <img src={`/api/attachments/${a.id}`} alt="" className="size-14 shrink-0 rounded border object-cover" loading="lazy" />
+              ) : (
+                <span className="flex size-14 shrink-0 items-center justify-center rounded border text-xs text-muted-foreground">PDF</span>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">{ATTACHMENT_KIND_LABEL[a.kind]}</Badge>
+                  <a href={`/api/attachments/${a.id}`} target="_blank" rel="noopener" className="font-medium break-all hover:underline">
+                    {a.fileName}
+                  </a>
+                  <span className="text-xs text-muted-foreground">{kb(a.sizeBytes)}</span>
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {a.receivedAt && `受取 ${formatDate(todayOf(a.receivedAt))} ・ `}
+                  追加 {formatDateTime(a.createdAt)} {a.uploaderName ?? ""}
+                  {a.requestId && requestLabel.has(a.requestId) && ` ・ 回答元: ${requestLabel.get(a.requestId)}`}
+                </p>
+                {a.note && <p className="mt-1 text-xs">{a.note}</p>}
+              </div>
+              <ActionButton
+                action={deleteAttachmentAction.bind(null, a.id)}
+                confirm="削除しますか?"
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground"
+                aria-label={`${a.fileName} を削除`}
+              >
+                削除
+              </ActionButton>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// 日時を日本時間の YYYY-MM-DD にする
+function todayOf(d: Date) {
+  return todayInTokyo(d);
 }
 
 function TasksTab({ project, users }: { project: ProjectDetail; users: { id: string; name: string }[] }) {

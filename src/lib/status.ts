@@ -194,3 +194,15 @@ export function statusAfterRequest(kind: RequestKind, current: ArrangementStatus
       return "cancelled";
   }
 }
+
+// ---------- 添付書類 ----------
+
+export const ATTACHMENT_KINDS = ["request", "change_request", "supplier_reply", "other"] as const;
+export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
+export const ATTACHMENT_KIND_LABEL: Record<AttachmentKind, string> = {
+  request: "依頼書(依頼元から)",
+  change_request: "変更依頼(依頼元から)",
+  supplier_reply: "仕入先の回答",
+  other: "その他",
+};
+export const ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024; // 4MB(Vercel の受信上限 4.5MB に収める)

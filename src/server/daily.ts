@@ -10,7 +10,9 @@ import { addDays, tokyoDateTime } from "@/lib/dates";
 import { TERMINAL_STATUSES } from "@/lib/status";
 import { formatDate } from "@/lib/utils";
 import { recordAudit } from "./audit";
+import { ATTACHMENT_PREFIX } from "./attachments";
 import type { Mailer } from "./mailer";
+import type { FileStorage } from "./storage";
 
 type TaskLine = { title: string; dueDate: string; projectCode: string; projectTitle: string };
 type ProjectLine = { code: string; title: string; startDate: string; unconfirmed: string[] };
@@ -137,7 +139,7 @@ export type DailyOptions = {
   today: string;
   mailer: Mailer;
   appUrl: string;
-  demoReset?: { password: string } | null; // デモ公開中だけ指定する
+  demoReset?: { password: string; storage?: FileStorage | null } | null; // デモ公開中だけ指定する
   force?: boolean; // 今日すでに実行していても行う(管理者の手動実行)
   triggeredBy?: { userId: string } | null; // 手動実行した人(Cron のときは null)
 };
@@ -153,6 +155,8 @@ export async function runDailyJob(db: Db, opts: DailyOptions): Promise<DailyResu
 
   let reset = false;
   if (opts.demoReset) {
+    // 添付ファイルも消す(消さないと保管場所にファイルだけがたまり続ける)
+    await opts.demoReset.storage?.deletePrefix(ATTACHMENT_PREFIX);
     await resetAll(db);
     await seedDemoData(db, { today: opts.today, password: opts.demoReset.password });
     reset = true;

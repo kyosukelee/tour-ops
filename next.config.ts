@@ -4,6 +4,10 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
+  experimental: {
+    // 添付ファイル(4MBまで)を Server Action で受け取るため。Vercel の受信上限 4.5MB に収まる大きさ
+    serverActions: { bodySizeLimit: "4.4mb" },
+  },
   // Vercel 以外(コンテナ)でも動かせるよう、必要なファイルだけをまとめて出力する
   output: "standalone",
   // このフォルダをプロジェクトの起点にする(上の階層の package-lock.json を見に行かない)

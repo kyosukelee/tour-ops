@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 !.env.example
+
+# 添付ファイルの手元の保存先(R2 を使わないとき)
+.data/

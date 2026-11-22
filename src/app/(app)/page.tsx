@@ -9,11 +9,11 @@ import { getDb } from "@/db";
 import { todayInTokyo } from "@/lib/dates";
 import { requireActor } from "@/lib/session";
 import { PROJECT_STATUSES, PROJECT_STATUS_LABEL, TERMINAL_STATUSES } from "@/lib/status";
-import { cn, formatDate, formatDateRange, formatDateTime } from "@/lib/utils";
+import { cn, formatDate, formatDateRange, formatDateTime, formatYen } from "@/lib/utils";
 import { runDailyJobAction } from "@/app/actions/system";
 import { ActionButton } from "@/components/form/action-button";
 import { can } from "@/server/core";
-import { getDashboard, lastDailyRun } from "@/server/queries";
+import { getArrangementAlerts, getDashboard, lastDailyRun } from "@/server/queries";
 
 export const metadata: Metadata = { title: "ダッシュボード | tour-ops" };
 
@@ -36,8 +36,9 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/">["searc
   const today = todayInTokyo();
   const db = getDb();
   const isAdmin = can(actor, "system.run");
-  const [data, lastRun] = await Promise.all([
+  const [data, alerts, lastRun] = await Promise.all([
     getDashboard(db, { today, userId: allTasks ? undefined : actor.id }),
+    getArrangementAlerts(db, { today }),
     isAdmin ? lastDailyRun(db) : Promise.resolve(null),
   ]);
 
@@ -45,9 +46,13 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/">["searc
     <div className="space-y-6">
       <section aria-label="案件の件数" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="進行中の案件" value={data.openCount} href="/projects" />
-        <Stat label="手配中" value={data.statusCounts.arranging} href="/projects?status=arranging" />
-        <Stat label="期限切れのタスク" value={data.overdueTasks.length} tone={data.overdueTasks.length ? "alert" : undefined} />
-        <Stat label="14日以内に出発" value={data.departures.length} />
+        <Stat label="期限切れのタスク" value={data.overdueTasks.length} tone={data.overdueTasks.length ? "alert" : undefined} href="/tasks" />
+        <Stat label="回答期限切れの手配" value={alerts.overdueReplies.length} tone={alerts.overdueReplies.length ? "alert" : undefined} />
+        <Stat
+          label={`今月出発の粗利見込み(${Number(alerts.monthStart.slice(5, 7))}月・${alerts.monthProjectCount}件)`}
+          value={formatYen(alerts.monthProfit)}
+          sub={`売上 ${formatYen(alerts.monthSales)}`}
+        />
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -119,6 +124,26 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/">["searc
         </Card>
       </div>
 
+      {(alerts.overdueReplies.length > 0 || alerts.unarranged.length > 0) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>手配の注意</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-6 lg:grid-cols-2">
+            <AlertList
+              title="回答期限を過ぎても回答がない手配"
+              empty="ありません"
+              rows={alerts.overdueReplies.map((a) => ({ ...a, note: `回答期限 ${formatDate(a.replyDue)}`, alert: true }))}
+            />
+            <AlertList
+              title="受注済みなのに、まだ依頼していない手配"
+              empty="ありません"
+              rows={alerts.unarranged.map((a) => ({ ...a, note: `利用日 ${formatDate(a.serviceDate)}`, alert: false }))}
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {isAdmin && (
         <Card>
           <CardHeader>
@@ -164,12 +189,13 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/">["searc
   );
 }
 
-function Stat({ label, value, href, tone }: { label: string; value: number; href?: string; tone?: "alert" }) {
+function Stat({ label, value, href, tone, sub }: { label: string; value: number | string; href?: string; tone?: "alert"; sub?: string }) {
   const body = (
     <Card className={cn("h-full", href && "transition-colors hover:bg-accent/50")}>
       <CardContent>
         <p className="text-xs text-muted-foreground">{label}</p>
         <p className={cn("mt-1 text-2xl font-semibold tabular-nums", tone === "alert" && "text-destructive")}>{value}</p>
+        {sub && <p className="text-xs text-muted-foreground tabular-nums">{sub}</p>}
       </CardContent>
     </Card>
   );
@@ -181,5 +207,42 @@ function ScopeLink({ href, active, children }: { href: string; active: boolean; 
     <Link href={href} aria-current={active ? "true" : undefined} className={cn("rounded px-2 py-1 hover:bg-accent", active && "bg-accent font-medium")}>
       {children}
     </Link>
+  );
+}
+
+function AlertList({
+  title,
+  empty,
+  rows,
+}: {
+  title: string;
+  empty: string;
+  rows: { id: string; description: string; supplierName: string | null; projectId: string; projectCode: string; projectTitle: string; note: string; alert: boolean }[];
+}) {
+  return (
+    <section>
+      <h3 className="mb-2 text-xs font-semibold text-muted-foreground">
+        {title}({rows.length}件)
+      </h3>
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{empty}</p>
+      ) : (
+        <ul className="divide-y text-sm">
+          {rows.map((a) => (
+            <li key={a.id} className="flex items-start justify-between gap-3 py-2">
+              <span className="min-w-0">
+                <span className="block">
+                  {a.supplierName ?? "仕入先未定"} ・ {a.description}
+                </span>
+                <Link href={`/projects/${a.projectId}?tab=requests`} className="text-xs text-muted-foreground hover:underline">
+                  {a.projectCode} {a.projectTitle}
+                </Link>
+              </span>
+              <span className={cn("shrink-0 text-xs tabular-nums", a.alert && "font-medium text-destructive")}>{a.note}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

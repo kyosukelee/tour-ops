@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PlusIcon } from "lucide-react";
 import { Loading, PageHeader } from "@/components/app/page-header";
+import { KanbanBoard } from "@/components/projects/kanban-board";
 import { ProjectStatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getDb } from "@/db";
 import { requireActor } from "@/lib/session";
 import { PROJECT_STATUSES, PROJECT_STATUS_LABEL } from "@/lib/status";
-import { formatDateRange, formatYen } from "@/lib/utils";
+import { cn, formatDateRange, formatYen } from "@/lib/utils";
 import { listAgencyOptions, listProjects, listUserOptions } from "@/server/queries";
 
 export const metadata: Metadata = { title: "案件 | tour-ops" };
@@ -44,7 +45,17 @@ const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) 
 async function ProjectList({ searchParams }: { searchParams: PageProps<"/projects">["searchParams"] }) {
   await requireActor();
   const sp = await searchParams;
-  const filter = { status: one(sp.status) || "open", agencyId: one(sp.agency), ownerId: one(sp.owner), q: one(sp.q) };
+  const view = one(sp.view) === "kanban" ? "kanban" : "list";
+  // カンバンは進行中の案件だけを列に並べる
+  const filter = { status: view === "kanban" ? "open" : one(sp.status) || "open", agencyId: one(sp.agency), ownerId: one(sp.owner), q: one(sp.q) };
+  const viewHref = (v: "list" | "kanban") => {
+    const q = new URLSearchParams();
+    for (const [k, val] of [["q", filter.q], ["agency", filter.agencyId], ["owner", filter.ownerId]] as const) if (val) q.set(k, val);
+    if (v === "list" && one(sp.status)) q.set("status", one(sp.status));
+    if (v === "kanban") q.set("view", "kanban");
+    const str = q.toString();
+    return str ? `/projects?${str}` : "/projects";
+  };
   const db = getDb();
   const [rows, agencies, users] = await Promise.all([
     listProjects(db, {
@@ -58,14 +69,27 @@ async function ProjectList({ searchParams }: { searchParams: PageProps<"/project
 
   return (
     <div className="space-y-4">
+      <div className="flex gap-1 rounded-md border p-0.5 text-sm w-fit" role="group" aria-label="表示の切り替え">
+        {(["list", "kanban"] as const).map((v) => (
+          <Link
+            key={v}
+            href={viewHref(v)}
+            aria-current={view === v ? "true" : undefined}
+            className={cn("rounded px-3 py-1", view === v ? "bg-accent font-medium" : "text-muted-foreground hover:bg-accent/60")}
+          >
+            {v === "list" ? "リスト" : "カンバン"}
+          </Link>
+        ))}
+      </div>
       <form method="get" className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-end" role="search">
+        {view === "kanban" && <input type="hidden" name="view" value="kanban" />}
         <label className="col-span-2 space-y-1 text-xs sm:w-56">
           <span className="text-muted-foreground">キーワード(ツアー名・案件番号)</span>
           <Input name="q" defaultValue={filter.q} placeholder="例: 宮島" />
         </label>
-        <label className="space-y-1 text-xs sm:w-44">
+        <label className={cn("space-y-1 text-xs sm:w-44", view === "kanban" && "hidden")}>
           <span className="text-muted-foreground">ステータス</span>
-          <NativeSelect name="status" defaultValue={filter.status}>
+          <NativeSelect name="status" defaultValue={filter.status} disabled={view === "kanban"}>
             <option value="open">進行中(終了を除く)</option>
             <option value="all">すべて</option>
             {PROJECT_STATUSES.map((st) => (
@@ -102,14 +126,16 @@ async function ProjectList({ searchParams }: { searchParams: PageProps<"/project
             絞り込む
           </Button>
           <Button asChild variant="ghost">
-            <Link href="/projects">条件をクリア</Link>
+            <Link href={view === "kanban" ? "/projects?view=kanban" : "/projects"}>条件をクリア</Link>
           </Button>
         </div>
       </form>
 
       <p className="text-sm text-muted-foreground">{rows.length}件</p>
 
-      {rows.length === 0 ? (
+      {view === "kanban" ? (
+        <KanbanBoard cards={rows} />
+      ) : rows.length === 0 ? (
         <p className="rounded-lg border p-6 text-center text-sm text-muted-foreground">条件に合う案件はありません。</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border">

@@ -3,6 +3,7 @@ import { getDb } from "@/db";
 import { todayInTokyo } from "@/lib/dates";
 import { runDailyJob } from "@/server/daily";
 import { createMailer } from "@/server/mailer";
+import { createStorage } from "@/server/storage";
 
 export const maxDuration = 60;
 
@@ -16,7 +17,10 @@ export async function GET(req: Request) {
     today: todayInTokyo(),
     mailer: createMailer(),
     appUrl: process.env.BETTER_AUTH_URL ?? "",
-    demoReset: process.env.DEMO_RESET === "true" ? { password: process.env.SEED_DEMO_PASSWORD ?? "tour-ops-demo" } : null,
+    demoReset:
+      process.env.DEMO_RESET === "true"
+        ? { password: process.env.SEED_DEMO_PASSWORD ?? "tour-ops-demo", storage: createStorage() }
+        : null,
   });
   console.info(JSON.stringify({ level: "info", msg: "daily job", result }));
   return Response.json(result);
